@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="MudanzaPro" />
+  <meta name="theme-color" content="#0f1117" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>MudanzaPro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+
+<!-- ════ AUTH ════ -->
+<div id="auth-screen">
+  <div class="top-header">
+    <div class="logo-row">
+      <span class="logo-icon">🚛</span>
+      <div><div class="logo-title">MudanzaPro</div><div class="logo-sub">Gestión de trabajos</div></div>
+    </div>
+  </div>
+  <div class="auth-body">
+    <div class="auth-card">
+      <div style="display:flex;align-items:center;gap:11px">
+        <span style="font-size:2rem">🔐</span>
+        <div>
+          <div style="font-size:1.1rem;font-weight:800;color:var(--accent)">Acceder</div>
+          <div style="font-size:.7rem;color:var(--muted)">Solo equipo autorizado</div>
+        </div>
+      </div>
+      <div class="auth-field"><label>Correo</label><input type="email" id="inp-email" placeholder="tu@correo.com" autocomplete="email"/></div>
+      <div class="auth-field"><label>Contraseña</label><input type="password" id="inp-pass" placeholder="••••••••" autocomplete="current-password"/></div>
+      <div class="auth-err" id="auth-err"></div>
+      <button class="btn btn-accent" id="btn-login" style="width:100%;padding:13px;font-size:.95rem">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ APP ════ -->
+<div id="app-screen" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+
+  <div class="top-header" id="g-header">
+    <div class="logo-row">
+      <span class="logo-icon">🚛</span>
+      <div><div class="logo-title">MudanzaPro</div><div class="logo-sub" id="user-label">—</div></div>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="btn-logout">Salir</button>
+  </div>
+
+  <div id="views">
+
+    <!-- ── CALENDARIO ── -->
+    <div class="view active" id="view-cal">
+      <div id="notif-banner">
+        <span style="font-size:1.05rem">🔔</span>
+        <p>Activa notificaciones para avisos del equipo.</p>
+        <button id="btn-notif">Activar</button>
+      </div>
+      <div class="cal-nav">
+        <button class="cal-nav-btn" id="cal-prev">‹</button>
+        <div class="cal-month-title" id="cal-month"></div>
+        <button class="cal-nav-btn" id="cal-next">›</button>
+      </div>
+      <div class="week-row" id="week-row"></div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--indigo)"></div><span class="legend-text">Pendiente</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div><span class="legend-text">En curso</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div><span class="legend-text">Completado</span></div>
+      </div>
+    </div>
+
+    <!-- ── DÍA ── -->
+    <div class="view" id="view-day">
+      <div class="sub-header">
+        <button class="btn-back" id="btn-back-cal">‹ Calendario</button>
+        <div class="sub-title" id="day-title"></div>
+        <button class="btn btn-accent btn-sm" id="btn-new-job">+ Trabajo</button>
+      </div>
+      <div class="day-content" id="day-content"></div>
+    </div>
+
+    <!-- ── FORMULARIO ── -->
+    <div class="view" id="view-form">
+      <div class="sub-header">
+        <button class="btn-back" id="btn-form-cancel">✕ Cancelar</button>
+        <div class="sub-title" id="form-title">Nuevo trabajo</div>
+        <button class="btn btn-accent btn-sm" id="btn-save-job">Guardar</button>
+      </div>
+      <div class="tab-bar" id="tab-bar"></div>
+      <div class="form-scroll" id="form-scroll"></div>
+    </div>
+
+    <!-- ── DETALLE ── -->
+    <div class="view" id="view-detail">
+      <div class="sub-header">
+        <button class="btn-back" id="btn-back-day">‹ Volver</button>
+        <div class="sub-title">Detalle del trabajo</div>
+        <button class="btn btn-ghost btn-sm" id="btn-edit-job">Editar</button>
+      </div>
+      <div class="detail-content" id="detail-content"></div>
+    </div>
+
+
+    <!-- ── PRESUPUESTOS ── -->
+    <div class="view" id="view-presupuestos">
+      <div class="sub-header" style="justify-content:center">
+        <div class="sub-title">📄 Presupuestos</div>
+      </div>
+      <div class="pres-content" id="pres-content"></div>
+    </div>
+
+    <!-- ── TARIFAS ── -->
+    <div class="view" id="view-tarifas">
+      <div class="sub-header" style="justify-content:center">
+        <div class="sub-title">💰 Tarifas</div>
+      </div>
+      <div class="tarifas-content" id="tarifas-content"></div>
+    </div>
+
+    <!-- ── FINANZAS ── -->
+    <div class="view" id="view-finanzas">
+      <div class="sub-header" style="justify-content:center">
+        <div class="sub-title">📊 Finanzas</div>
+      </div>
+      <div class="finanzas-content" id="finanzas-content"></div>
+    </div>
+
+  </div><!-- /views -->
+
+  <!-- BOTTOM NAV -->
+  <nav id="bottom-nav">
+    <button class="nav-btn active" data-view="cal"><span class="nav-icon">📅</span>Calendario</button>
+    <button class="nav-btn" data-view="tarifas"><span class="nav-icon">💰</span>Tarifas</button>
+    <button class="nav-btn" data-view="finanzas"><span class="nav-icon">📊</span>Finanzas</button>
+    <button class="nav-btn" data-view="presupuestos"><span class="nav-icon">📄</span>Presupuestos</button>
+  </nav>
+
+</div><!-- /app-screen -->
+</div><!-- /app -->
+
+<!-- ── CIERRE ECONÓMICO MODAL ── -->
+<div id="close-overlay">
+  <div id="close-box">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title">✅ Cerrar trabajo</div>
+      <button class="modal-close" id="close-modal-x">✕</button>
+    </div>
+    <div class="modal-body" id="close-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="close-modal-cancel" style="flex:1">Cancelar</button>
+      <button class="btn btn-green" id="close-modal-save" style="flex:2">Confirmar y cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="lb"><button id="lb-x">✕</button><img id="lb-img" alt=""/></div>
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════
+     🔥 FIREBASE
+     ══════════════════════════════════ -->
+<script type="module" src="app.js"></script>
+</body>
+</html>

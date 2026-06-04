@@ -1,0 +1,34 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Logo y assets públicos (solo lectura pública, escritura autenticada)
+    match /assets/{allPaths=**} {
+      allow read:  if true;
+      allow write: if request.auth != null;
+    }
+
+    // PDFs de presupuestos — lectura y escritura para autenticados
+    match /presupuestos/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Fotos de trabajos
+    match /trabajos/{userId}/{allPaths=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // Inventario
+    match /inventario/{userId}/{allPaths=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

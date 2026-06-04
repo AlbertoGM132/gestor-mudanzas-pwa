@@ -1,0 +1,5 @@
+firebase-functions>=0.1.0
+firebase-admin>=6.0.0
+reportlab>=4.0.0
+google-cloud-firestore>=2.0.0
+google-cloud-storage>=2.0.0
