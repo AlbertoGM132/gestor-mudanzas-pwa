@@ -543,7 +543,8 @@ const PISO_ASC=(f,e)=>[f,e===true?'con ascensor':e===false?'sin ascensor':''].fi
 // Lo que el cliente nos ha contado, en una línea por bloque (sirve para calcular el precio)
 function clientSummary(j){
   const lado=(icon,addr,floor,el,acc)=>{const t=[addr,PISO_ASC(floor,el),accessLabel(acc)].filter(Boolean).join(' · ');return t?`${icon} ${t}`:'';};
-  const fecha=j.date?`📅 ${fmtDateEs(j.date)}`:j.desiredDate?`📅 Le viene bien: ${fmtDateEs(j.desiredDate)}`:'';
+  const fecha=j.date?`📅 ${fmtDateEs(j.date)}`:j.desiredDate?`📅 Le viene bien: ${fmtDateEs(j.desiredDate)}`
+    :j.desiredWhen==='pronto'?'📅 Lo antes posible':j.desiredWhen==='nosabe'?'📅 Aún no sabe la fecha':'';
   return [
     (j.services||[]).length?`📦 ${j.services.join(', ')}`:'',
     lado('📍',j.originAddress,j.originFloor,elev(j,'originElevator'),j.originAccess),
@@ -614,6 +615,19 @@ function vehiculosTexto(vs){
   return t.join(' y ');
 }
 const INCLUYE_SERV={'Desmontaje y montaje':'desmontaje y montaje de muebles','Embalaje':'embalaje','Vajilla / frágil':'embalaje de piezas frágiles'};
+// Fecha para el mensaje: la del calendario, la que pones en la calculadora, la que pidió el
+// cliente o, si no hay ninguna, «Lo antes posible» / «Por concretar». Nunca se queda vacía.
+function quoteDate(j){
+  const e=j.estimate||{};
+  if(j.date)return fmtDateLong(j.date);
+  if(e.date)return fmtDateLong(e.date);
+  if(j.desiredDate)return fmtDateLong(j.desiredDate);
+  const nota=(String(j.notes||'').match(/Fecha que le viene bien: ([^\n(]+)/)||[])[1]||'';
+  if(j.desiredWhen==='pronto'||/antes posible/i.test(nota))return 'Lo antes posible';
+  const m=nota.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(m)return fmtDateLong(`${m[3]}-${m[2]}-${m[1]}`);
+  return 'Por concretar';
+}
 function quoteMessage(j){
   const e=j.estimate||{};
   const town=a=>String(a||'').split(',').map(x=>x.trim()).filter(Boolean).pop()||'';
@@ -627,7 +641,7 @@ function quoteMessage(j){
     servicio:serv.includes('Mudanza completa')||!serv.length?'mudanza':serv[0].toLowerCase(),
     servicios:serv.join(', ')||'Mudanza',
     origen:town(j.originAddress)||j.location||'', destino:town(j.destinAddress)||'',
-    fecha:j.date?fmtDateLong(j.date):j.desiredDate?fmtDateLong(j.desiredDate):'',
+    fecha:quoteDate(j),
     m3:Number(e.m3)?numEs(e.m3):'',
     precio:numEs(Number(j.price||0)),
     vehiculos:veh, personas:personas?String(personas):'', incluye,
@@ -1065,6 +1079,7 @@ function renderQuoteTab(scroll){
   const f=formState;
   if(!f.estimate)f.estimate=defaultEstimate(f);
   const e=f.estimate;
+  if(!e.matQty)e.matQty={};if(!Array.isArray(e.vehicles))e.vehicles=[];   // presupuestos antiguos o del conector
   const consumables=MATERIALS.filter(m=>!REUSABLE.includes(m));
   scroll.innerHTML=`
     <div class="form-section">
@@ -1082,8 +1097,9 @@ function renderQuoteTab(scroll){
       </div>
     </div>
     <div class="form-section">
-      <div class="form-section-title">📦 Volumen</div>
+      <div class="form-section-title">📦 Volumen y fecha</div>
       <div class="fi"><label>Volumen aprox. (m³) · sale en el mensaje al cliente</label><input id="q-m3" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Ej.: 28" value="${esc(String(e.m3||''))}" /></div>
+      ${f.date?'':`<div class="fi"><label>Fecha que le propones (opcional) · si la dejas vacía sale la que pidió el cliente o «Por concretar»</label><input id="q-date" type="date" value="${esc(String(e.date||f.desiredDate||''))}" /></div>`}
     </div>
     <div class="form-section">
       <div class="form-section-title">⏱ Personal y horas</div>
@@ -1122,6 +1138,7 @@ function renderQuoteTab(scroll){
   scroll.querySelectorAll('[data-qvadd]').forEach(b=>b.onclick=()=>{const[type,plan]=b.dataset.qvadd.split('|');e.vehicles.push({type,plan:+plan,days:jobDays(f),km:''});renderFormTab();});
   scroll.querySelectorAll('[data-qmat]').forEach(i=>i.oninput=()=>{e.matQty[i.dataset.qmat]=i.value;upd();});
   [['q-hours','hours'],['q-workers','workers'],['q-partners','partners'],['q-fuel','fuel'],['q-extras','extras'],['q-m3','m3']].forEach(([id,k])=>{$(id).oninput=ev=>{e[k]=ev.target.value;upd();};});
+  if($('q-date'))$('q-date').onchange=ev=>{e.date=ev.target.value;};
   $('q-apply').onclick=()=>{
     const r=computeEstimate(e);
     if(!r.price){toast('Pon al menos las horas o un vehículo','err');return;}

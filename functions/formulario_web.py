@@ -179,6 +179,7 @@ def procesar(body, ip, repo, ahora=None):
         "originAddress": o_dir, "originFloor": o_piso, "originElevator": o_asc, "originAccess": o_acc,
         "destinAddress": d_dir, "destinFloor": d_piso, "destinElevator": d_asc, "destinAccess": d_acc,
         "notes": "\n".join(notas), "desiredDate": fecha,
+        "desiredWhen": "" if fecha else (cuando if cuando in CUANDO else ""),
         "stage": "solicitud", "date": "", "days": 1, "startTime": "08:00", "status": "pendiente",
         "crew": [], "vehicles": [], "materials": [], "photos": [], "price": "",
         "source": "web", "createdBy": "Formulario web", "updatedBy": "Formulario web",
