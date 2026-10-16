@@ -13,7 +13,7 @@ La clave MCP_KEY es un secreto de Firebase:
   firebase functions:secrets:set MCP_KEY
 Cualquiera que tenga la clave puede LEER los trabajos, así que no la compartas. Para revocarla, cambia el secreto y vuelve a desplegar.
 
-Por privacidad, el conector NO devuelve teléfono, email ni datos económicos.
+Por privacidad, el conector NO devuelve teléfono (solo si existe), email ni datos económicos.
 """
 import base64
 import hmac
@@ -35,11 +35,13 @@ FOTO_MAX_PX = 1024
 
 # Campos del trabajo que se exponen (nada de teléfono, email ni dinero).
 CAMPOS_PUBLICOS = [
-    "date", "startTime", "endTime", "status", "clientName",
+    "date", "days", "startTime", "endTime", "status", "clientName", "location", "services",
     "originAddress", "originFloor", "originElevator",
     "destinAddress", "destinFloor", "destinElevator",
-    "vehicle", "team", "materials", "notes",
+    "vehicles", "crew", "vehicle", "team", "materials", "notes",
 ]
+VEHICULOS = {"crafter": "Furgoneta VW Crafter", "iveco": "Camión Iveco Daily 20 m³"}
+MAX_DIAS = 31
 
 STATUS_LABEL = {"completado": "completado", "en_curso": "en curso"}
 
@@ -48,10 +50,12 @@ TOOLS = [
         "name": "listar_mudanzas",
         "title": "Listar mudanzas",
         "description": (
-            "Lista los trabajos de MudanzaPro (mudanzas, portes, montajes) entre dos "
-            "fechas, ordenados por fecha y hora. Devuelve id, fecha, horario, estado, "
-            "cliente, origen y destino (con piso y ascensor), vehículo, equipo, "
-            "materiales, notas y cuántas fotos tiene. Por defecto, de hoy a 14 días."
+            "Lista los trabajos de MudanzaPro (mudanzas, portes, montajes) que caen entre dos "
+            "fechas, ordenados por fecha y hora; incluye los de varios días que empezaron antes "
+            "(date = primer día, days = nº de días, ultimo_dia). Devuelve cliente, población, "
+            "servicios, horario, estado, origen y destino (piso y ascensor: true/false; si falta, "
+            "no se sabe), vehículos, equipo (crew), materiales, notas, cuántas fotos tiene, si hay "
+            "teléfono y 'faltan' (datos importantes sin apuntar). Por defecto, de hoy a 14 días."
         ),
         "inputSchema": {
             "type": "object",
@@ -130,12 +134,59 @@ def _limpiar(valor):
     return valor
 
 
+def _dias(data):
+    try:
+        return min(MAX_DIAS, max(1, int(data.get("days") or 1)))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _tiene_telefono(data):
+    digitos = "".join(ch for ch in str(data.get("phone") or "") if ch.isdigit())
+    return len(digitos) >= 9
+
+
+def faltan(data):
+    """Datos importantes sin apuntar (misma regla que la app)."""
+    if data.get("status") == "completado":
+        return []
+    f = []
+    servicios = data.get("services") or []
+    if not _tiene_telefono(data):
+        f.append("teléfono")
+    if not data.get("originAddress") and not data.get("location"):
+        f.append("origen")
+    if not data.get("destinAddress") and any(s in ("Mudanza completa", "Porte") for s in servicios):
+        f.append("destino")
+    if not data.get("price"):
+        f.append("precio")
+    if not data.get("vehicles") and not data.get("vehicle"):
+        f.append("vehículo")
+    if not data.get("crew") and not data.get("team"):
+        f.append("equipo")
+    return f
+
+
 def resumen_trabajo(doc_id, data):
     out = {"id": doc_id}
     for campo in CAMPOS_PUBLICOS:
         if data.get(campo) not in (None, "", []):
             out[campo] = _limpiar(data[campo])
+    # Trabajos antiguos (sin "days"): el ascensor venía desmarcado por defecto, así que es desconocido
+    for k in ("originElevator", "destinElevator"):
+        if "days" not in data and data.get(k) is False:
+            out.pop(k, None)
+    if isinstance(out.get("vehicles"), list):
+        out["vehicles"] = [f"{VEHICULOS.get(v.get('type'), v.get('type'))} ({v.get('plan')} km/día)"
+                           for v in out["vehicles"] if isinstance(v, dict)]
+    n = _dias(data)
+    out["days"] = n
+    if n > 1 and data.get("date"):
+        inicio = datetime.strptime(data["date"], "%Y-%m-%d").date()
+        out["ultimo_dia"] = (inicio + timedelta(days=n - 1)).isoformat()
     out["status"] = STATUS_LABEL.get(data.get("status"), "pendiente")
+    out["tiene_telefono"] = _tiene_telefono(data)
+    out["faltan"] = faltan(data)
     out["num_fotos"] = len(data.get("photos") or [])
     return out
 
@@ -187,7 +238,16 @@ def tool_listar(repo, args, hoy=None):
         raise ToolError("'hasta' no puede ser anterior a 'desde'.")
     if (hasta - desde).days > MAX_RANGE_DAYS:
         raise ToolError(f"El rango máximo es de {MAX_RANGE_DAYS} días.")
-    filas = [resumen_trabajo(i, d) for i, d in repo.trabajos_entre(desde.isoformat(), hasta.isoformat())]
+    # Se buscan también los que empezaron antes y siguen en curso (trabajos de varios días)
+    candidatos = repo.trabajos_entre((desde - timedelta(days=MAX_DIAS - 1)).isoformat(), hasta.isoformat())
+    filas = []
+    for i, d in candidatos:
+        try:
+            inicio = datetime.strptime(d.get("date", ""), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if inicio + timedelta(days=_dias(d) - 1) >= desde:
+            filas.append(resumen_trabajo(i, d))
     filas.sort(key=lambda t: (t.get("date", ""), t.get("startTime", "")))
     return [_texto({"desde": desde.isoformat(), "hasta": hasta.isoformat(), "total": len(filas), "trabajos": filas})]
 
