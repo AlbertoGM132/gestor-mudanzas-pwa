@@ -80,7 +80,7 @@ const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g
 const fmt = n => Number(n||0).toFixed(2);
 let toastT;
 function toast(msg,type=''){clearTimeout(toastT);const t=$('toast');t.textContent=msg;t.className='show '+type;toastT=setTimeout(()=>t.className='',3200)}
-function statusColor(s){return s==='completado'?'#22c55e':s==='en_curso'?'#f59e0b':'#6366f1'}
+function statusColor(s){return s==='completado'?'#15803d':s==='en_curso'?'#d97706':'#4f46e5'}
 function statusLabel(s){return s==='completado'?'Completado':s==='en_curso'?'En curso':'Pendiente'}
 function pad(n){return String(n).padStart(2,'0')}
 function dateKey(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
