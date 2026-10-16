@@ -18,15 +18,14 @@ import base64
 import hmac
 import io
 import json
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
 MCP_KEY = SecretParam("MCP_KEY")
 
-TZ = ZoneInfo("Europe/Madrid")
 SERVER_INFO = {"name": "mudanzapro", "version": "1.0.0"}
 DEFAULT_PROTOCOL = "2025-06-18"
 MAX_RANGE_DAYS = 92
@@ -104,6 +103,14 @@ class ToolError(Exception):
 
 # ── Utilidades ─────────────────────────────────────────────
 
+def _hoy_madrid():
+    """Fecha de hoy en Madrid. En Windows sin el paquete tzdata, aproxima con UTC+1."""
+    try:
+        return datetime.now(ZoneInfo("Europe/Madrid")).date()
+    except ZoneInfoNotFoundError:
+        return (datetime.now(timezone.utc) + timedelta(hours=1)).date()
+
+
 def _parse_fecha(valor, nombre):
     try:
         return datetime.strptime(valor, "%Y-%m-%d").date()
@@ -172,7 +179,7 @@ class FirebaseRepo:
 # ── Herramientas ───────────────────────────────────────────
 
 def tool_listar(repo, args, hoy=None):
-    hoy = hoy or datetime.now(TZ).date()
+    hoy = hoy or _hoy_madrid()
     desde = _parse_fecha(args["desde"], "desde") if args.get("desde") else hoy
     hasta = _parse_fecha(args["hasta"], "hasta") if args.get("hasta") else desde + timedelta(days=14)
     if hasta < desde:
