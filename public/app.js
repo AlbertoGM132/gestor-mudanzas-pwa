@@ -191,7 +191,7 @@ function updatePipeBadge(){
   b.textContent=n||'';b.style.display=n?'inline-flex':'none';
 }
 // Formulario público para clientes (public/presupuesto.html)
-const FORM_URL=`${location.origin}/presupuesto`;
+const FORM_URL='https://presupuesto.mudanzasdelsur.es';   // dominio propio (Hostinger → Firebase); la portada lleva al formulario
 const FORM_MSG='Hola!👋 para poder darte presupuesto necesitaría que rellenases este formulario, son solo 2 minutos y es muy sencillo. Hay que adjuntar fotos pero si lo prefieres me las puedes enviar por aquí 😁';
 function renderSolicitudes(){
   const cont=$('solicitudes-content');if(!cont)return;
