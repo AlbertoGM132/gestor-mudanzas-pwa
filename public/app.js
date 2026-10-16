@@ -139,7 +139,7 @@ let curView='cal',curJob=null,isEditing=false,activeTab='info',formState={},form
 let tarifas={workerHour:10,partnerHour:22,businessPct:10,roundTo:5,extraKm:0.22,
   rent_furgoneta_200:73,rent_furgoneta_400:88,rent_camion_200:133,rent_camion_400:150,
   fuelPrice:2,consumo_crafter:10,consumo_iveco:14,   // €/L y L/100 km
-  reviewUrl:'',
+  reviewUrl:'',quoteMsg:'',
   ...Object.fromEntries(MATERIALS.map(m=>[m,0]))};
 let finEntries=[]; // loaded from Firestore
 
@@ -441,8 +441,6 @@ function renderDetailView(){
   const pipeSection=job.date?'':`
     <div class="detail-section pipe-actions">
       <div class="detail-section-title">📥 ${STAGE_LABEL[st]}${stageSince(job)!=null?` · hace ${stageSince(job)} día${stageSince(job)===1?'':'s'}`:''}</div>
-      ${st==='solicitud'?`<div class="notes-text" style="color:var(--muted)">Cuando tengas la información, calcula el precio en <strong>Editar → 💶 Presupuesto</strong>.</div>`:''}
-      ${job.estimate&&job.estimate.result?`<div class="notes-text">Presupuesto calculado: coste ${fmt(job.estimate.result.cost)} € → <strong>${fmt(job.estimate.result.price)} €</strong></div>`:''}
       <div class="pipe-btns">
         ${st==='solicitud'?`<button class="btn btn-ghost btn-sm" data-stage="presupuestado">📨 Presupuesto enviado</button>`:''}
         ${st!=='aceptado'&&st!=='perdido'?`<button class="btn btn-ghost btn-sm" data-stage="aceptado">🤝 Aceptado</button>`:''}
@@ -456,6 +454,7 @@ function renderDetailView(){
     </div>`;
 
   cont.innerHTML=`
+    ${quoteSection(job)}
     ${pipeSection}
     <div class="detail-card">
       <div class="detail-client-row">
@@ -527,11 +526,122 @@ function renderDetailView(){
     }catch(e){toast('Error: '+e.message,'err');}
   };
   if($('btn-fill-missing'))$('btn-fill-missing').onclick=()=>editCurJob();
+  cont.querySelectorAll('[data-quote-open]').forEach(b=>b.onclick=()=>openQuote());
+  if($('btn-quote-wa'))$('btn-quote-wa').addEventListener('click',()=>{
+    // El enlace abre WhatsApp; a la vez la solicitud pasa a «Presupuesto enviado»
+    if(jobStage(curJob)==='solicitud')setStage(curJob,'presupuestado').then(()=>{toast('📨 Marcado como presupuesto enviado','ok');renderDetailView();}).catch(()=>{});
+  });
   $('btn-del-job').onclick=async()=>{
     if(!confirm('¿Eliminar este trabajo?'))return;
     try{await deleteDoc(doc(db,'trabajos',curJob.id));toast('Trabajo eliminado');showView('day');}
     catch(e){toast('Error eliminando','err');}
   };
+}
+
+// ── Presupuesto desde la solicitud ──
+const PISO_ASC=(f,e)=>[f,e===true?'con ascensor':e===false?'sin ascensor':''].filter(Boolean).join(', ');
+// Lo que el cliente nos ha contado, en una línea por bloque (sirve para calcular el precio)
+function clientSummary(j){
+  const lado=(icon,addr,floor,el,acc)=>{const t=[addr,PISO_ASC(floor,el),accessLabel(acc)].filter(Boolean).join(' · ');return t?`${icon} ${t}`:'';};
+  const fecha=j.date?`📅 ${fmtDateEs(j.date)}`:j.desiredDate?`📅 Le viene bien: ${fmtDateEs(j.desiredDate)}`:'';
+  return [
+    (j.services||[]).length?`📦 ${j.services.join(', ')}`:'',
+    lado('📍',j.originAddress,j.originFloor,elev(j,'originElevator'),j.originAccess),
+    lado('🏠',j.destinAddress,j.destinFloor,elev(j,'destinElevator'),j.destinAccess),
+    fecha,
+    (j.photos||[]).length?`📷 ${j.photos.length} foto${j.photos.length>1?'s':''} (abajo)`:'📷 Sin fotos todavía',
+  ].filter(Boolean);
+}
+function quoteSection(job){
+  if(job.status==='completado')return '';
+  const r=job.estimate&&job.estimate.result,price=Number(job.price||0);
+  if(job.date)return '';                    // trabajos ya programados: el precio va en Editar
+  const hasPhone=!!waPhone(job.phone);
+  const lines=clientSummary(job).map(l=>`<div class="quote-line">${esc(l)}</div>`).join('');
+  if(!price) return `
+    <div class="detail-section quote-box">
+      <div class="detail-section-title">💶 Presupuesto</div>
+      <div class="quote-summary">${lines}</div>
+      <button class="btn-complete" data-quote-open>🧮 Calcular presupuesto</button>
+    </div>`;
+  const msg=quoteMessage(job);
+  return `
+    <div class="detail-section quote-box">
+      <div class="detail-section-title">💶 Presupuesto</div>
+      <div class="quote-price"><span>Precio cerrado</span><strong>${fmt(price).replace('.00','')} €</strong></div>
+      ${r?`<div class="notes-text" style="color:var(--muted)">Coste ${fmt(r.cost)} € + ${fmt(r.business)} € para el negocio${r.fuel?` · gasoil ${fmt(r.fuel)} €`:''}</div>`:''}
+      <div class="quote-msg">${esc(msg)}</div>
+      ${hasPhone?`<a class="btn-wa-big" id="btn-quote-wa" href="${esc(waLink(job.phone,msg))}" target="_blank" rel="noopener">📤 Enviar presupuesto por WhatsApp</a>`
+        :`<div class="notes-text" style="color:var(--danger)">Falta el teléfono del cliente para enviarlo por WhatsApp.</div>`}
+      <button class="btn btn-ghost btn-sm" data-quote-open style="margin-top:8px">✏️ Recalcular</button>
+    </div>`;
+}
+function openQuote(){
+  formState={...curJob};formPhotos=[...(curJob.photos||[])];
+  openJobForm(true);activeTab='quote';renderTabBar();renderFormTab();
+}
+// Mensaje breve del presupuesto (formato de Alberto). Se edita en Tarifas → «Mensaje del presupuesto».
+// Las líneas cuyo dato falta (p. ej. sin m³) se quitan solas.
+const DEFAULT_QUOTE_MSG=`Hola {nombre}, {saludo} 👋
+
+Soy Alberto, de *Mudanzas del Sur*. Te paso el presupuesto de tu {servicio}:
+
+📍 {origen} → {destino}
+📅 {fecha}
+📦 {m3} m³ aprox.
+
+💶 *{precio} €*
+
+Incluye {incluye}. Precio cerrado.
+
+Si te encaja, confírmamelo por aquí y te bloqueo la fecha. Y si quieres que te lo detalle más, me dices 🙂
+
+Un saludo,
+*Alberto — Mudanzas del Sur*
+📞 659 71 52 71`;
+const DIAS_L=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const MESES_L=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function fmtDateLong(ds){const d=new Date(ds+'T12:00:00');return isNaN(d)?'':`${DIAS_L[d.getDay()]} ${d.getDate()} de ${MESES_L[d.getMonth()]}`;}
+const numEs=n=>Number(n).toLocaleString('es-ES',{maximumFractionDigits:2});
+function listaEs(a){a=a.filter(Boolean);return a.length<2?(a[0]||''):a.slice(0,-1).join(', ')+', y '+a[a.length-1];}
+function saludoHora(h=new Date().getHours()){return h<14?'buenos días':h<21?'buenas tardes':'buenas noches';}
+// "camión de 20 m³ y furgoneta", "2 furgonetas"…
+function vehiculosTexto(vs){
+  const n={iveco:0,crafter:0};(vs||[]).forEach(v=>{if(v.type in n)n[v.type]++;});
+  const t=[];
+  if(n.iveco)t.push(n.iveco>1?`${n.iveco} camiones de 20 m³`:'camión de 20 m³');
+  if(n.crafter)t.push(n.crafter>1?`${n.crafter} furgonetas`:'furgoneta');
+  return t.join(' y ');
+}
+const INCLUYE_SERV={'Desmontaje y montaje':'desmontaje y montaje de muebles','Embalaje':'embalaje','Vajilla / frágil':'embalaje de piezas frágiles'};
+function quoteMessage(j){
+  const e=j.estimate||{};
+  const town=a=>String(a||'').split(',').map(x=>x.trim()).filter(Boolean).pop()||'';
+  const veh=vehiculosTexto((e.vehicles&&e.vehicles.length)?e.vehicles:jobVehicles(j));
+  const personas=(Number(e.workers)||0)+(Number(e.partners)||0)||jobCrew(j).length;
+  const serv=j.services||[];
+  const incluye=listaEs([veh,personas?`equipo de ${personas} persona${personas>1?'s':''}`:'',
+    ...serv.map(s=>INCLUYE_SERV[s]).filter(Boolean),'carga y descarga']);
+  const vals={
+    nombre:firstName(j), saludo:saludoHora(),
+    servicio:serv.includes('Mudanza completa')||!serv.length?'mudanza':serv[0].toLowerCase(),
+    servicios:serv.join(', ')||'Mudanza',
+    origen:town(j.originAddress)||j.location||'', destino:town(j.destinAddress)||'',
+    fecha:j.date?fmtDateLong(j.date):j.desiredDate?fmtDateLong(j.desiredDate):'',
+    m3:Number(e.m3)?numEs(e.m3):'',
+    precio:numEs(Number(j.price||0)),
+    vehiculos:veh, personas:personas?String(personas):'', incluye,
+  };
+  const tpl=String(tarifas.quoteMsg||DEFAULT_QUOTE_MSG);
+  return tpl.split('\n').map(line=>{
+    const keys=[...line.matchAll(/\{(\w+)\}/g)].map(m=>m[1]).filter(k=>k in vals);
+    if(keys.includes('origen')&&keys.includes('destino')&&(vals.origen||vals.destino)&&!(vals.origen&&vals.destino))
+      return line.replace(/\{origen\}\s*→\s*\{destino\}/,vals.origen||vals.destino);   // solo uno conocido
+    if(keys.some(k=>k!=='nombre'&&!vals[k]))return null;                              // falta el dato → fuera la línea
+    return line;
+  }).filter(l=>l!==null).join('\n')
+    .replace(/\{(\w+)\}/g,(m,k)=>k in vals?vals[k]:m)
+    .replace(/Hola , /,'Hola, ').replace(/\n{3,}/g,'\n\n').trim();
 }
 
 // ── Mensajes de WhatsApp preparados ──
@@ -945,7 +1055,8 @@ function bindAccess(k,key){
 function defaultEstimate(f){
   const crew=jobCrew(f);
   return {
-    vehicles:jobVehicles(f).length?jobVehicles(f).map(v=>({type:v.type,plan:v.plan,days:jobDays(f),km:''})):[{type:'crafter',plan:200,days:jobDays(f),km:''}],
+    vehicles:jobVehicles(f).length?jobVehicles(f).map(v=>({type:v.type,plan:v.plan,days:jobDays(f),km:''}))
+      :[{type:(f.services||[]).includes('Mudanza completa')?'iveco':'crafter',plan:200,days:jobDays(f),km:''}],
     hours:'',workers:crew.length?crew.filter(c=>!PARTNERS.includes(c)).length:1,
     partners:crew.length?crew.filter(c=>PARTNERS.includes(c)).length:2,
     matQty:{},fuel:'',extras:''};
@@ -969,6 +1080,10 @@ function renderQuoteTab(scroll){
       <div class="mat-tags-row">
         ${VEHICLE_TYPES.flatMap(t=>KM_PLANS.map(pl=>`<button class="mat-tag" data-qvadd="${t.id}|${pl}">+ ${t.id==='crafter'?'Crafter':'Iveco'} ${pl} km</button>`)).join('')}
       </div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">📦 Volumen</div>
+      <div class="fi"><label>Volumen aprox. (m³) · sale en el mensaje al cliente</label><input id="q-m3" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Ej.: 28" value="${esc(String(e.m3||''))}" /></div>
     </div>
     <div class="form-section">
       <div class="form-section-title">⏱ Personal y horas</div>
@@ -999,19 +1114,21 @@ function renderQuoteTab(scroll){
       <div class="fuel-hint" id="q-fuel-hint"></div>
     </div>
     <div class="calc-preview" id="quote-calc"></div>
-    <button class="btn-complete" id="q-apply">Usar este precio</button>`;
+    <button class="btn-complete" id="q-apply">${isEditing&&curJob?'Guardar este precio':'Usar este precio'}</button>`;
   const upd=()=>updateQuoteCalc();
   scroll.querySelectorAll('[data-qvdays]').forEach(i=>i.oninput=()=>{e.vehicles[+i.dataset.qvdays].days=i.value;upd();});
   scroll.querySelectorAll('[data-qvkm]').forEach(i=>i.oninput=()=>{e.vehicles[+i.dataset.qvkm].km=i.value;upd();});
   scroll.querySelectorAll('[data-qvdel]').forEach(b=>b.onclick=()=>{e.vehicles.splice(+b.dataset.qvdel,1);renderFormTab();});
   scroll.querySelectorAll('[data-qvadd]').forEach(b=>b.onclick=()=>{const[type,plan]=b.dataset.qvadd.split('|');e.vehicles.push({type,plan:+plan,days:jobDays(f),km:''});renderFormTab();});
   scroll.querySelectorAll('[data-qmat]').forEach(i=>i.oninput=()=>{e.matQty[i.dataset.qmat]=i.value;upd();});
-  [['q-hours','hours'],['q-workers','workers'],['q-partners','partners'],['q-fuel','fuel'],['q-extras','extras']].forEach(([id,k])=>{$(id).oninput=ev=>{e[k]=ev.target.value;upd();};});
+  [['q-hours','hours'],['q-workers','workers'],['q-partners','partners'],['q-fuel','fuel'],['q-extras','extras'],['q-m3','m3']].forEach(([id,k])=>{$(id).oninput=ev=>{e[k]=ev.target.value;upd();};});
   $('q-apply').onclick=()=>{
     const r=computeEstimate(e);
     if(!r.price){toast('Pon al menos las horas o un vehículo','err');return;}
     formState.price=String(r.price);
     formState.estimate={...e,result:r,at:new Date().toISOString()};
+    // Desde una solicitud abierta: se guarda y se vuelve al detalle (pasa a «enviado» al mandarlo por WhatsApp)
+    if(isEditing&&curJob){toast(`Precio: ${fmt(r.price)} € ✓`,'ok');$('btn-save-job').click();return;}
     if(!formState.date&&(formState.stage||'solicitud')==='solicitud')formState.stage='presupuestado';
     toast(`Precio: ${fmt(r.price)} € ✓ (guarda para conservarlo)`,'ok');
     updateQuoteCalc();
@@ -1312,15 +1429,22 @@ function renderTarifas(){
       <div class="notes-text" style="color:var(--muted)">Mantas, fajas, traspaleta, escalera y carretilla se reutilizan y no cuentan como gasto.</div>
     </div>
     <div class="tarifa-section">
+      <div class="tarifa-section-title">💬 Mensaje del presupuesto (WhatsApp)</div>
+      <div class="fi"><textarea id="t-quote-msg" rows="10" style="width:100%;font-family:inherit">${esc(tarifas.quoteMsg||DEFAULT_QUOTE_MSG)}</textarea></div>
+      <div class="notes-text" style="color:var(--muted)">Se rellena solo con: <code>{nombre}</code> <code>{saludo}</code> <code>{servicio}</code> <code>{origen}</code> <code>{destino}</code> <code>{fecha}</code> <code>{m3}</code> <code>{precio}</code> <code>{incluye}</code> <code>{vehiculos}</code> <code>{personas}</code>. Si falta un dato, su línea no sale. <button class="link-btn" id="t-quote-reset">Volver al de por defecto</button></div>
+    </div>
+    <div class="tarifa-section">
       <div class="tarifa-section-title">⭐ Reseñas</div>
       <div class="fi"><label>Enlace para dejar reseña en Google</label><input id="t-review" type="url" placeholder="https://g.page/r/…/review" value="${esc(tarifas.reviewUrl||'')}" /></div>
       <div class="notes-text" style="color:var(--muted)">Se añade al mensaje de WhatsApp «Pedir reseña».</div>
     </div>
     <button class="save-tarifas-btn" id="btn-save-tarifas">Guardar tarifas</button>`;
 
+  $('t-quote-reset').onclick=()=>{$('t-quote-msg').value=DEFAULT_QUOTE_MSG;};
   $('btn-save-tarifas').addEventListener('click',async()=>{
     cont.querySelectorAll('[data-key]').forEach(inp=>{tarifas[inp.dataset.key]=Number(inp.value||0);});
     tarifas.reviewUrl=$('t-review').value.trim();
+    const qm=$('t-quote-msg').value.trim();tarifas.quoteMsg=qm===DEFAULT_QUOTE_MSG.trim()?'':qm;
     $('btn-save-tarifas').innerHTML='<span class="spin"></span>';
     $('btn-save-tarifas').disabled=true;
     try{
