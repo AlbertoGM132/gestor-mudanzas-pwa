@@ -192,7 +192,7 @@ function updatePipeBadge(){
 }
 // Formulario público para clientes (public/presupuesto.html)
 const FORM_URL=`${location.origin}/presupuesto`;
-const FORM_MSG='Hola 👋 Para darte el presupuesto, rellena este formulario: son 2 minutos y solo hay que pulsar botones y hacer fotos. Si te lías, mándame las fotos por aquí 🙂';
+const FORM_MSG='Hola!👋 para poder darte presupuesto necesitaría que rellenases este formulario, son solo 2 minutos y es muy sencillo. Hay que adjuntar fotos pero si lo prefieres me las puedes enviar por aquí 😁';
 function renderSolicitudes(){
   const cont=$('solicitudes-content');if(!cont)return;
   const card=j=>{
@@ -233,7 +233,7 @@ function renderSolicitudes(){
   $('btn-form-copy').onclick=async()=>{try{await navigator.clipboard.writeText(FORM_URL);toast('Enlace copiado ✓','ok');}catch(e){toast(FORM_URL);}};
   $('btn-form-share').onclick=async()=>{
     if(navigator.share){try{await navigator.share({title:'Pide tu presupuesto · Mudanzas del Sur',text:FORM_MSG,url:FORM_URL});return;}catch(e){if(e&&e.name==='AbortError')return;}}
-    window.open(`https://wa.me/?text=${encodeURIComponent(FORM_MSG+' '+FORM_URL)}`,'_blank');
+    window.open(`https://wa.me/?text=${encodeURIComponent(FORM_MSG+'\n\n'+FORM_URL)}`,'_blank');
   };
   cont.querySelectorAll('[data-pid]').forEach(el=>el.onclick=()=>{const j=pipeline.find(x=>x.id===el.dataset.pid);if(j)openJobDetail(j);});
 }
