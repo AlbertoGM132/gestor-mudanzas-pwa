@@ -386,3 +386,15 @@
     .add-person-row{display:flex;gap:8px;margin-top:8px}
     .add-person-row input{flex:1;min-width:0;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:.85rem;color:var(--text);font-family:var(--font);outline:none}
     .veh-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:10px;background:var(--surfaceAlt);border:1px solid var(--border);font-size:.82rem;font-weight:700;margin-bottom:6px}
+    /* ── Cierre de varios trabajos ── */
+    .close-job-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:var(--surfaceAlt);border:1px solid var(--border);margin-bottom:6px;cursor:pointer}
+    .close-job-row input{width:18px;height:18px;accent-color:var(--accent);flex-shrink:0}
+    .close-job-name{flex:1;font-size:.84rem;font-weight:700;min-width:0}
+    .close-job-name small{color:var(--muted);font-weight:600}
+    .close-job-price{font-size:.8rem;font-weight:800;white-space:nowrap}
+    .veh-close{padding:9px 10px;border-radius:10px;background:var(--surfaceAlt);border:1px solid var(--border);margin-bottom:6px}
+    .veh-close-top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.82rem;font-weight:700;margin-bottom:6px}
+    .veh-close-inputs{display:flex;gap:8px}
+    .veh-close-inputs label{flex:1;display:flex;flex-direction:column;gap:3px;font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase}
+    .veh-close-inputs input{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:var(--font);font-size:.86rem;width:100%}
+    .calc-split{margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:.78rem}
