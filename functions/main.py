@@ -316,3 +316,8 @@ def generar_presupuesto(req: https_fn.Request) -> https_fn.Response:
             json.dumps({"error": str(e)}),
             status=500, mimetype="application/json"
         )
+
+
+# ── Conector MCP para Claude (solo lectura) ───────────────
+# Firebase solo despliega las funciones visibles en main.py
+from mcp_mudanzapro import mudanzapro_mcp  # noqa: E402,F401
