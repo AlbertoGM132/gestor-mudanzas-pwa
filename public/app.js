@@ -184,12 +184,15 @@ function subscribePipeline(){
 }
 function stageSince(j){const st=jobStage(j);return daysAgo(j[STAGE_AT[st]]||j.updatedAt||j.createdAt)}
 // Avisos de seguimiento: presupuesto sin respuesta >3 días, aceptado sin fecha >7 días
-function needsFollowUp(j){const st=jobStage(j),d=stageSince(j)??0;return (st==='presupuestado'&&d>=3)||(st==='aceptado'&&d>=7)}
+function needsFollowUp(j){const st=jobStage(j),d=stageSince(j)??0;return (st==='solicitud'&&d>=2)||(st==='presupuestado'&&d>=3)||(st==='aceptado'&&d>=7)}
 function updatePipeBadge(){
   const b=$('pipe-badge');if(!b)return;
-  const n=pipeline.filter(needsFollowUp).length;
+  const n=pipeline.filter(j=>jobStage(j)==='solicitud'||needsFollowUp(j)).length;   // por presupuestar + seguimientos
   b.textContent=n||'';b.style.display=n?'inline-flex':'none';
 }
+// Formulario público para clientes (public/presupuesto.html)
+const FORM_URL=`${location.origin}/presupuesto`;
+const FORM_MSG='Hola 👋 Para darte el presupuesto, rellena este formulario: son 2 minutos y solo hay que pulsar botones y hacer fotos. Si te lías, mándame las fotos por aquí 🙂';
 function renderSolicitudes(){
   const cont=$('solicitudes-content');if(!cont)return;
   const card=j=>{
@@ -198,7 +201,7 @@ function renderSolicitudes(){
       <div class="job-card-bar" style="background:${fu?'var(--amber)':'var(--indigo)'}"></div>
       <div class="job-card-body">
         <div class="job-card-top">
-          <div class="job-client-name">${esc(j.clientName||'Sin nombre')}</div>
+          <div class="job-client-name">${esc(j.clientName||'Sin nombre')}${j.source==='web'?' <span class="web-tag">🌐 Web</span>':''}</div>
           ${j.price?`<div class="status-badge" style="background:var(--accentSoft);color:var(--accent)">${fmt(j.price)} €</div>`:''}
         </div>
         ${j.location||(j.services||[]).length?`<div class="job-detail-row">🏷 ${esc([j.location,(j.services||[]).join(', ')].filter(Boolean).join(' · '))}</div>`:''}
@@ -209,6 +212,15 @@ function renderSolicitudes(){
     </div>`;
   };
   cont.innerHTML=`
+    <div class="form-link-card">
+      <div class="form-link-title">🌐 Formulario «Pide tu presupuesto»</div>
+      <div class="form-link-url">${esc(FORM_URL)}</div>
+      <div class="form-link-btns">
+        <button class="btn btn-ghost btn-sm" id="btn-form-share">📤 Enviar a un cliente</button>
+        <button class="btn btn-ghost btn-sm" id="btn-form-copy">Copiar enlace</button>
+        <a class="btn btn-ghost btn-sm" href="${esc(FORM_URL)}" target="_blank" rel="noopener">Ver</a>
+      </div>
+    </div>
     <button class="btn btn-accent" id="btn-new-request" style="width:100%;padding:12px;font-size:.9rem">+ Nueva solicitud</button>
     ${PIPELINE.map(st=>{
       const list=pipeline.filter(j=>jobStage(j)===st.id).sort((a,b)=>(stageSince(b)??0)-(stageSince(a)??0));
@@ -218,6 +230,11 @@ function renderSolicitudes(){
         ${list.length?list.map(card).join(''):'<div class="empty-state" style="padding:10px">Nada por aquí.</div>'}
       </div>`;}).join('')}`;
   $('btn-new-request').onclick=()=>openNewJob(true);
+  $('btn-form-copy').onclick=async()=>{try{await navigator.clipboard.writeText(FORM_URL);toast('Enlace copiado ✓','ok');}catch(e){toast(FORM_URL);}};
+  $('btn-form-share').onclick=async()=>{
+    if(navigator.share){try{await navigator.share({title:'Pide tu presupuesto · Mudanzas del Sur',text:FORM_MSG,url:FORM_URL});return;}catch(e){if(e&&e.name==='AbortError')return;}}
+    window.open(`https://wa.me/?text=${encodeURIComponent(FORM_MSG+' '+FORM_URL)}`,'_blank');
+  };
   cont.querySelectorAll('[data-pid]').forEach(el=>el.onclick=()=>{const j=pipeline.find(x=>x.id===el.dataset.pid);if(j)openJobDetail(j);});
 }
 async function setStage(job,stage,extra={}){
@@ -1476,7 +1493,7 @@ async function initNotifs(){
     if(r==='granted'){$('notif-banner').style.display='none';await subFCM();toast('✅ Notificaciones activadas','ok');}
     else toast('Permiso denegado','err');
   };
-  onMessage(messaging,p=>{const{title,body}=p.notification||{};toast(`🔔 ${title}: ${body}`);});
+  onMessage(messaging,p=>{const{title,body}=p.notification||p.data||{};toast(`🔔 ${title}: ${body}`);});
 }
 async function subFCM(){
   try{
