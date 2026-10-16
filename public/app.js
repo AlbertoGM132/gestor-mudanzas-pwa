@@ -494,7 +494,8 @@ function renderCloseModal(){
   const defDays=Math.max(1,...(sel.length?sel:c.candidates).map(jobDays));
   const body=$('close-modal-body');
   const consumables=MATERIALS.filter(m=>!REUSABLE.includes(m));
-  $('close-modal-title').textContent=c.candidates.length>1?`✅ Cerrar el ${fmtDateEs(c.ds)}`:'✅ Cerrar trabajo';
+  const title=$('close-modal-title')||document.querySelector('#close-box .modal-title');   // tolera un index.html antiguo en caché
+  if(title)title.textContent=c.candidates.length>1?`✅ Cerrar el ${fmtDateEs(c.ds)}`:'✅ Cerrar trabajo';
   body.innerHTML=`
     ${c.candidates.length>1?`<div class="form-section">
       <div class="form-section-title">📋 Trabajos de este cierre</div>

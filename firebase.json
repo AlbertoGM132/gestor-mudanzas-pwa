@@ -4,7 +4,11 @@
       "source": "functions",
       "codebase": "default",
       "runtime": "python312",
-      "ignore": ["node_modules", ".git", "**/*.log"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        "**/*.log"
+      ]
     }
   ],
   "firestore": {
@@ -15,9 +19,36 @@
   },
   "hosting": {
     "public": "public",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "rewrites": [
-      { "source": "**", "destination": "/index.html" }
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(html|js|css|json)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
     ]
   }
 }
