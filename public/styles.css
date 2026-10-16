@@ -410,3 +410,6 @@
     .nav-badge{position:absolute;top:-4px;right:-10px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--amber);color:#111;font-size:.6rem;font-weight:800;align-items:center;justify-content:center}
     .tri-wrap{flex-wrap:wrap}
     .tri-wrap .tri-opt{flex:1 1 calc(50% - 8px)}
+
+/* Gasoil automático */
+.fuel-hint{font-size:.72rem;color:var(--muted);margin-top:4px;line-height:1.35}
