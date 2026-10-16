@@ -5,7 +5,7 @@
 // ══════════════════════════════════════════════════════════════
 
 // Versión del caché de la PWA
-const CACHE_NAME  = 'mudanza-v1';
+const CACHE_NAME  = 'mudanza-v2';
 const CACHE_FILES = ['/', '/index.html', '/manifest.json'];
 
 // ── Firebase SDK (modo compat, requerido en SW) ──
@@ -80,7 +80,14 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (!url.origin.includes(self.location.hostname)) return;
 
+  // Red primero (así cada deploy se ve al momento); la caché solo se usa sin conexión
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request).then(res => {
+      if (res.ok && CACHE_FILES.includes(url.pathname)) {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then(c => c.put(event.request, copy));
+      }
+      return res;
+    }).catch(() => caches.match(event.request))
   );
 });

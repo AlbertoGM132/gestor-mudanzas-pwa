@@ -373,3 +373,16 @@
     /* Toast sin bottom-nav */
     body.desktop #toast { bottom: 24px }
   
+    /* ── OPTIMIZACIÓN 2026-10: avisos, WhatsApp, ascensor, equipo ── */
+    .job-missing{margin-top:6px;font-size:.72rem;font-weight:700;color:var(--amber)}
+    .missing-card{background:var(--amberSoft);border:1px solid var(--amber);border-radius:var(--radius);padding:11px 13px;font-size:.8rem;color:var(--text);line-height:1.5}
+    .link-btn{background:none;border:none;color:var(--accent);font-family:var(--font);font-weight:800;font-size:.8rem;cursor:pointer;padding:0 0 0 4px;text-decoration:underline}
+    .wa-row{display:flex;flex-wrap:wrap;gap:8px}
+    .wa-btn{flex:1 1 calc(50% - 8px);min-height:44px;display:flex;align-items:center;justify-content:center;padding:10px 8px;border-radius:10px;background:rgba(37,211,102,.13);border:1px solid #25d366;color:#25d366;font-size:.8rem;font-weight:800;text-decoration:none;text-align:center}
+    .wa-btn:active{background:rgba(37,211,102,.25)}
+    .tri-row{display:flex;gap:8px}
+    .tri-opt{flex:1;min-height:40px;padding:8px 4px;border-radius:10px;border:1px solid var(--border);background:var(--surfaceAlt);color:var(--muted);font-size:.8rem;font-weight:800;cursor:pointer;font-family:var(--font)}
+    .tri-opt.active{background:var(--accentSoft);border-color:var(--accent);color:var(--accent)}
+    .add-person-row{display:flex;gap:8px;margin-top:8px}
+    .add-person-row input{flex:1;min-width:0;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:.85rem;color:var(--text);font-family:var(--font);outline:none}
+    .veh-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:10px;background:var(--surfaceAlt);border:1px solid var(--border);font-size:.82rem;font-weight:700;margin-bottom:6px}
