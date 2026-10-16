@@ -248,6 +248,12 @@ def tool_listar(repo, args, hoy=None):
             continue
         if inicio + timedelta(days=_dias(d) - 1) >= desde:
             filas.append(resumen_trabajo(i, d))
+    # Vehículo y equipo se comparten entre los trabajos del mismo día: no se avisa si otro ya los tiene
+    for campo, claves in (("vehículo", ("vehicles", "vehicle")), ("equipo", ("crew", "team"))):
+        dias_con = {t.get("date") for t in filas if any(t.get(k) for k in claves)}
+        for t in filas:
+            if campo in t["faltan"] and t.get("date") in dias_con:
+                t["faltan"].remove(campo)
     filas.sort(key=lambda t: (t.get("date", ""), t.get("startTime", "")))
     return [_texto({"desde": desde.isoformat(), "hasta": hasta.isoformat(), "total": len(filas), "trabajos": filas})]
 

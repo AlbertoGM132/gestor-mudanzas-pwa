@@ -245,6 +245,14 @@ function renderDayView(){
     card.onclick=()=>openJobDetail(job);
     cont.appendChild(card);
   });
+  const pend=pendingJobsOn(selDate);
+  if(pend.length){
+    const btn=document.createElement('button');
+    btn.className='btn-complete';btn.style.marginTop='4px';
+    btn.textContent=pend.length>1?`✅ Cerrar el día (${pend.length} trabajos)`:'✅ Cerrar el día';
+    btn.onclick=()=>openCloseModal(selDate);
+    cont.appendChild(btn);
+  }
 }
 
 $('btn-back-cal').onclick=()=>showView('cal');
@@ -264,9 +272,23 @@ function missingInfo(job){
   if(!job.originAddress&&!job.location)m.push('origen');
   if(!job.destinAddress&&(job.services||[]).some(s=>s==='Mudanza completa'||s==='Porte'))m.push('destino');
   if(!job.price)m.push('precio');
-  if(!jobVehicles(job).length&&!job.vehicle)m.push('vehículo');
-  if(!jobCrew(job).length&&!job.team)m.push('equipo');
+  // Si otro trabajo del mismo día ya tiene vehículo/equipo, se comparte: no avisar
+  const mates=dayMates(job);
+  if(!jobVehicles(job).length&&!job.vehicle&&!mates.some(j=>jobVehicles(j).length||j.vehicle))m.push('vehículo');
+  if(!jobCrew(job).length&&!job.team&&!mates.some(j=>jobCrew(j).length||j.team))m.push('equipo');
   return m;
+}
+// Otros trabajos que coinciden en alguno de los días de este trabajo (según lo cargado en el calendario)
+function dayMates(job){
+  const out=new Map();
+  for(let i=0;i<jobDays(job);i++)(jobsCache[addDays(job.date,i)]||[]).forEach(j=>{if(j.id!==job.id)out.set(j.id,stripDay(j));});
+  return [...out.values()];
+}
+// Trabajos pendientes de un día (sin repetir los de varios días)
+function pendingJobsOn(ds){
+  const out=new Map();
+  (jobsCache[ds]||[]).forEach(j=>{if(j.status!=='completado')out.set(j.id,stripDay(j));});
+  return [...out.values()].sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
 }
 
 function renderDetailView(){
@@ -282,21 +304,26 @@ function renderDetailView(){
   if(isCompleted&&job.profit!=null){
     const pColor=job.profit>=0?'var(--green)':'var(--danger)';
     const row=(l,v)=>v?`<div class="detail-row"><span>${l}</span><strong>-${fmt(v)} €</strong></div>`:'';
+    const g=cd.group||cd;                       // cierres antiguos guardaban los totales sin "group"
+    const shared=(cd.jobIds||[job.id]).length>1;
     profitSection=`<div class="detail-section">
       <div class="detail-section-title">💰 Resultado económico (sin IVA)</div>
+      ${shared?`<div class="notes-text" style="color:var(--muted);margin-bottom:6px">Cerrado junto con ${cd.jobIds.length-1} trabajo${cd.jobIds.length>2?'s':''} más del ${fmtDateEs(cd.closeDate||job.date)}. Los gastos comunes se reparten según el precio de cada trabajo (${Math.round((cd.share||0)*100)} % para este).</div>`:''}
       <div class="detail-row"><span>Precio cobrado</span><strong>${fmt(job.price)} €</strong></div>
-      ${row('Alquiler vehículos',cd.totalVehicles)}
-      ${row('Km extra',cd.totalExtraKm)}
-      ${row('Personal',cd.totalLabor)}
-      ${row('Material gastado',cd.totalMaterials)}
-      ${row('Gasolina',cd.fuel)}
-      ${row('Otros gastos',cd.extras)}
-      ${cd.margin!=null?`<div class="detail-row" style="padding-top:6px;border-top:1px solid var(--border)"><span>Margen del trabajo</span><strong>${fmt(cd.margin)} €</strong></div>`:''}
-      ${Object.entries(cd.partnerPay||{}).map(([n,v])=>row(`Cobra ${esc(n)}`,v)).join('')}
+      ${shared?row('Su parte de los costes',cd.allocCost):`
+      ${row('Alquiler vehículos',g.totalVehicles)}
+      ${row('Km extra',g.totalExtraKm)}
+      ${row('Personal',g.totalLabor)}
+      ${row('Material gastado',g.totalMaterials)}
+      ${row('Gasolina',g.fuel)}
+      ${row('Otros gastos',g.extras)}`}
+      ${cd.allocMargin!=null||g.margin!=null?`<div class="detail-row" style="padding-top:6px;border-top:1px solid var(--border)"><span>Margen del trabajo</span><strong>${fmt(shared?cd.allocMargin:g.margin)} €</strong></div>`:''}
+      ${shared?row('Su parte del pago a socios',cd.allocPartners):Object.entries(g.partnerPay||{}).map(([n,v])=>row(`Cobra ${esc(n)}`,v)).join('')}
       <div class="detail-row" style="margin-top:4px;padding-top:8px;border-top:1px solid var(--border)">
         <span style="font-weight:800">Beneficio para el negocio</span>
         <strong style="color:${pColor};font-size:1.05rem">${job.profit>=0?'+':''}${fmt(job.profit)} €</strong>
       </div>
+      ${shared?`<div class="notes-text" style="color:var(--muted);margin-top:8px">Jornada completa: cobrado ${fmt(g.revenue)} € · costes ${fmt(g.totalCost)} € · socios ${fmt(g.totalPartners)} € · negocio ${fmt(g.profit)} €</div>`:''}
     </div>`;
   }
 
@@ -359,7 +386,7 @@ function renderDetailView(){
     <button class="btn-danger-outline" id="btn-del-job">🗑 Eliminar trabajo</button>`;
 
   if(!isCompleted){
-    $('btn-complete-job').onclick=()=>openCloseModal();
+    $('btn-complete-job').onclick=()=>openCloseModal(curJob.date,curJob.id);
   }
   if($('btn-fill-missing'))$('btn-fill-missing').onclick=()=>editCurJob();
   $('btn-del-job').onclick=async()=>{
@@ -391,19 +418,24 @@ $('btn-edit-job').onclick=editCurJob;
 // ════════════════════════════════════════
 let closeData = {};
 
-// Cálculo puro del cierre (sin IVA). Devuelve el desglose de costes y el beneficio.
-function computeClosing(job,inp,t=tarifas){
-  const days=jobDays(job);
+// Cálculo puro de un cierre (sin IVA). Un cierre puede incluir varios trabajos que comparten
+// vehículos, personal y gastos (p. ej. todos los de un día). Los gastos y el pago a socios se
+// reparten entre los trabajos en proporción a su precio.
+function computeClosing(jobs,inp,t=tarifas){
+  const r2=x=>Math.round(x*100)/100;
+  const revenue=r2(jobs.reduce((a,j)=>a+Number(j.price||0),0));
+  const defDays=Math.max(1,...jobs.map(jobDays));
   let totalVehicles=0,totalExtraKm=0;
   const vehicles=(inp.vehicles||[]).map(v=>{
     const kind=(VEHICLE_TYPES.find(x=>x.id===v.type)||{}).kind||'furgoneta';
+    const days=Math.max(1,parseInt(v.days)||defDays);
     const rent=Number(t[`rent_${kind}_${v.plan}`]||0)*days;
     const included=Number(v.plan||0)*days;
     const km=Number(v.km||0);
     const extraKm=Math.max(0,km-included);
     const extraCost=extraKm*Number(t.extraKm||0);
     totalVehicles+=rent;totalExtraKm+=extraCost;
-    return {...v,km,rent,included,extraKm,extraCost};
+    return {type:v.type,plan:v.plan,days,km,rent,included,extraKm,extraCost};
   });
   let totalLabor=0;const hours={};
   Object.entries(inp.hours||{}).forEach(([name,h])=>{
@@ -416,45 +448,73 @@ function computeClosing(job,inp,t=tarifas){
     matQty[m]=q;totalMaterials+=q*Number(t[m]||0);
   });
   const fuel=Number(inp.fuel||0),extras=Number(inp.extras||0);
-  const r2=x=>Math.round(x*100)/100;
   const totalCost=r2(totalVehicles+totalExtraKm+totalLabor+totalMaterials+fuel+extras);
-  // Lo que cobra cada socio en este trabajo (se decide en cada cierre)
   const partnerPay={};let totalPartners=0;
   Object.entries(inp.partnerPay||{}).forEach(([name,v])=>{v=Number(v||0);if(!v)return;partnerPay[name]=v;totalPartners+=v;});
-  const margin=r2(Number(job.price||0)-totalCost);
-  return {vehicles,hours,matQty,fuel,extras,partnerPay,
+  totalPartners=r2(totalPartners);
+  const margin=r2(revenue-totalCost);
+  // Reparto por trabajo según su precio (a partes iguales si no hay precios).
+  // El trabajo de mayor peso se queda los céntimos de redondeo, para que todo sume exacto.
+  const shares=jobs.map(j=>revenue>0?Number(j.price||0)/revenue:1/jobs.length);
+  const big=shares.indexOf(Math.max(...shares,0));
+  const split=total=>{const a=shares.map(sh=>r2(total*sh));if(big>=0)a[big]=r2(total-a.reduce((x,y,i)=>i===big?x:x+y,0));return a;};
+  const costs=split(totalCost),parts=split(totalPartners);
+  const perJob=jobs.map((j,i)=>{
+    const allocMargin=r2(Number(j.price||0)-costs[i]);
+    return {id:j.id,share:shares[i],allocCost:costs[i],allocPartners:parts[i],allocMargin,profit:r2(allocMargin-parts[i])};
+  });
+  return {vehicles,hours,matQty,fuel,extras,partnerPay,revenue,
     totalVehicles:r2(totalVehicles),totalExtraKm:r2(totalExtraKm),totalLabor:r2(totalLabor),
-    totalMaterials:r2(totalMaterials),totalCost,margin,totalPartners:r2(totalPartners),
-    profit:r2(margin-totalPartners)};   // profit = beneficio que queda para el negocio
+    totalMaterials:r2(totalMaterials),totalCost,margin,totalPartners,
+    profit:r2(margin-totalPartners),perJob};     // profit = beneficio que queda para el negocio
 }
 
-function openCloseModal(){
-  const job=curJob;
-  const crew=jobCrew(job);
-  const people=[...new Set([...WORKERS,...crew.filter(c=>!PARTNERS.includes(c))])];
-  closeData={
-    vehicles:jobVehicles(job).map(v=>({...v,km:''})),
+// Abre el cierre de un día. Por defecto incluye todos los trabajos pendientes de ese día.
+function openCloseModal(ds,onlyId){
+  const candidates=pendingJobsOn(ds);
+  if(onlyId&&!candidates.some(j=>j.id===onlyId)&&curJob)candidates.unshift(curJob);
+  const selected=new Set(candidates.map(j=>j.id));
+  const sel=candidates.filter(j=>selected.has(j.id));
+  // Vehículos: los apuntados en los trabajos, sin repetir (el mismo vehículo sirve para todo el día)
+  const seen=new Set(),vehicles=[];
+  sel.forEach(j=>jobVehicles(j).forEach(v=>{const k=v.type+'|'+v.plan;if(!seen.has(k)){seen.add(k);vehicles.push({...v,days:Math.max(1,...sel.map(jobDays)),km:''});}}));
+  const crews=[...new Set(sel.flatMap(jobCrew))];
+  const people=[...new Set([...WORKERS,...crews.filter(c=>!PARTNERS.includes(c))])];
+  closeData={ds,candidates,selected,vehicles,crew:crews,people,
     hours:Object.fromEntries(people.map(p=>[p,''])),
-    matQty:{},fuel:'',extras:'',people,crew,
-    partnerPay:Object.fromEntries(PARTNERS.map(p=>[p,'']))};
+    matQty:{},fuel:'',extras:'',partnerPay:Object.fromEntries(PARTNERS.map(p=>[p,'']))};
   renderCloseModal();
   $('close-overlay').classList.add('open');
   document.body.style.overflow='hidden';
 }
+function closeSelectedJobs(){return closeData.candidates.filter(j=>closeData.selected.has(j.id))}
 
 function renderCloseModal(){
-  const job=curJob,c=closeData,days=jobDays(job);
+  const c=closeData,sel=closeSelectedJobs();
+  const defDays=Math.max(1,...(sel.length?sel:c.candidates).map(jobDays));
   const body=$('close-modal-body');
   const consumables=MATERIALS.filter(m=>!REUSABLE.includes(m));
+  $('close-modal-title').textContent=c.candidates.length>1?`✅ Cerrar el ${fmtDateEs(c.ds)}`:'✅ Cerrar trabajo';
   body.innerHTML=`
+    ${c.candidates.length>1?`<div class="form-section">
+      <div class="form-section-title">📋 Trabajos de este cierre</div>
+      <div class="notes-text" style="color:var(--muted);margin-bottom:4px">Los gastos del día se apuntan una sola vez y se reparten según el precio de cada trabajo.</div>
+      ${c.candidates.map(j=>`
+        <label class="close-job-row">
+          <input type="checkbox" data-sel="${esc(j.id)}" ${c.selected.has(j.id)?'checked':''} />
+          <span class="close-job-name">${esc(j.clientName||'Sin nombre')}${jobDays(j)>1?` <small>(${jobDays(j)} días)</small>`:''}</span>
+          <span class="close-job-price">${j.price?fmt(j.price)+' €':'<span style="color:var(--danger)">sin precio</span>'}</span>
+        </label>`).join('')}
+    </div>`:''}
     <div class="form-section">
-      <div class="form-section-title">🚛 Vehículos (${days} día${days>1?'s':''} de alquiler)</div>
+      <div class="form-section-title">🚛 Vehículos alquilados</div>
       ${c.vehicles.length?c.vehicles.map((v,i)=>`
-        <div class="worker-row">
-          <span class="worker-label">${esc(vehicleLabel(v))}</span>
-          <input class="worker-input" type="number" min="0" step="1" placeholder="km" data-vkm="${i}" value="${esc(String(v.km))}" />
-          <span style="font-size:.75rem;color:var(--muted)">km</span>
-          <button class="photo-remove" style="position:static" data-vdel="${i}">✕</button>
+        <div class="veh-close">
+          <div class="veh-close-top"><span>${esc(vehicleLabel(v))}</span><button class="photo-remove" style="position:static" data-vdel="${i}">✕</button></div>
+          <div class="veh-close-inputs">
+            <label>Días <input type="number" min="1" max="31" step="1" data-vdays="${i}" value="${esc(String(v.days||defDays))}" /></label>
+            <label>Km totales <input type="number" min="0" step="1" placeholder="0" data-vkm="${i}" value="${esc(String(v.km))}" /></label>
+          </div>
         </div>`).join(''):'<div class="notes-text" style="color:var(--muted)">Añade los vehículos que habéis usado:</div>'}
       <div class="mat-tags-row" style="margin-top:6px">
         ${VEHICLE_TYPES.flatMap(t=>KM_PLANS.map(pl=>`<button class="mat-tag" data-vadd="${t.id}|${pl}">+ ${t.id==='crafter'?'Crafter':'Iveco'} ${pl} km</button>`)).join('')}
@@ -492,7 +552,7 @@ function renderCloseModal(){
       <div class="fi"><label>Otros: peajes, parking, comida… (€)</label><input type="number" id="chk-extras" min="0" step="0.5" placeholder="0.00" value="${esc(String(c.extras))}" /></div>
     </div>
     <div class="form-section">
-      <div class="form-section-title">💼 Lo que cobráis los socios en este trabajo</div>
+      <div class="form-section-title">💼 Lo que cobráis los socios</div>
       <div class="notes-text" style="color:var(--muted);margin-bottom:4px" id="close-margin-hint"></div>
       <div class="worker-hours-grid">
         ${PARTNERS.map(p=>`
@@ -505,9 +565,11 @@ function renderCloseModal(){
     </div>
     <div class="calc-preview" id="close-calc"></div>`;
 
+  body.querySelectorAll('[data-sel]').forEach(cb=>cb.onchange=()=>{cb.checked?c.selected.add(cb.dataset.sel):c.selected.delete(cb.dataset.sel);updateCloseCalc();});
   body.querySelectorAll('[data-vkm]').forEach(inp=>inp.oninput=()=>{c.vehicles[+inp.dataset.vkm].km=inp.value;updateCloseCalc();});
+  body.querySelectorAll('[data-vdays]').forEach(inp=>inp.oninput=()=>{c.vehicles[+inp.dataset.vdays].days=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=()=>{c.vehicles.splice(+b.dataset.vdel,1);renderCloseModal();});
-  body.querySelectorAll('[data-vadd]').forEach(b=>b.onclick=()=>{const[type,plan]=b.dataset.vadd.split('|');c.vehicles.push({type,plan:+plan,km:''});renderCloseModal();});
+  body.querySelectorAll('[data-vadd]').forEach(b=>b.onclick=()=>{const[type,plan]=b.dataset.vadd.split('|');c.vehicles.push({type,plan:+plan,days:defDays,km:''});renderCloseModal();});
   body.querySelectorAll('[data-worker]').forEach(inp=>inp.oninput=()=>{c.hours[inp.dataset.worker]=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-mat]').forEach(inp=>inp.oninput=()=>{c.matQty[inp.dataset.mat]=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-partner]').forEach(inp=>inp.oninput=()=>{c.partnerPay[inp.dataset.partner]=inp.value;updateCloseCalc();});
@@ -522,14 +584,16 @@ function renderCloseModal(){
 }
 
 function updateCloseCalc(){
-  const r=computeClosing(curJob,closeData);
+  const sel=closeSelectedJobs();
+  const r=computeClosing(sel,closeData);
   const pClass=r.profit>=0?'profit-pos':'profit-neg';
   const hint=$('close-margin-hint');
   if(hint)hint.textContent=`Margen después de gastos: ${fmt(r.margin)} €. Lo que no os repartáis queda para el negocio.`;
   const line=(l,v)=>`<div class="calc-row" style="color:var(--muted)"><span>${l}</span><span>-${fmt(v)} €</span></div>`;
   const kmNote=r.vehicles.filter(v=>v.extraKm>0).map(v=>`${v.extraKm} km extra`).join(', ');
+  const noPrice=sel.filter(j=>!Number(j.price));
   $('close-calc').innerHTML=`
-    <div class="calc-row"><span>Precio cobrado (sin IVA)</span><span>${fmt(curJob.price)} €</span></div>
+    <div class="calc-row"><span>Cobrado (sin IVA)${sel.length>1?` · ${sel.length} trabajos`:''}</span><span>${fmt(r.revenue)} €</span></div>
     ${line('Alquiler vehículos',r.totalVehicles)}
     ${line(`Km extra${kmNote?` (${kmNote})`:''}`,r.totalExtraKm)}
     ${line(`Personal (${fmt(tarifas.workerHour)} €/h)`,r.totalLabor)}
@@ -537,10 +601,13 @@ function updateCloseCalc(){
     ${line('Gasolina',r.fuel)}
     ${line('Otros gastos',r.extras)}
     <div class="calc-row total"><span>Total costes</span><span>${fmt(r.totalCost)} €</span></div>
-    <div class="calc-row"><span>Margen del trabajo</span><span>${fmt(r.margin)} €</span></div>
+    <div class="calc-row"><span>Margen</span><span>${fmt(r.margin)} €</span></div>
     ${Object.entries(r.partnerPay).map(([n,v])=>line(`Cobra ${esc(n)}`,v)).join('')}
     <div class="calc-row ${pClass}"><span>🏢 Beneficio para el negocio</span><span>${r.profit>=0?'+':''}${fmt(r.profit)} €</span></div>
-    ${!Number(curJob.price)?'<div class="calc-row" style="color:var(--danger)"><span>⚠️ Este trabajo no tiene precio apuntado</span></div>':''}`;
+    ${sel.length>1?`<div class="calc-split">${r.perJob.map(p=>{const j=sel.find(x=>x.id===p.id);return `<div class="calc-row"><span>${esc(j.clientName||'')}</span><span>${p.profit>=0?'+':''}${fmt(p.profit)} €</span></div>`;}).join('')}</div>`:''}
+    ${noPrice.length?`<div class="calc-row" style="color:var(--danger)"><span>⚠️ Sin precio: ${noPrice.map(j=>esc(j.clientName||'')).join(', ')}</span></div>`:''}
+    ${!sel.length?'<div class="calc-row" style="color:var(--danger)"><span>Marca al menos un trabajo</span></div>':''}`;
+  $('close-modal-save').disabled=!sel.length;
 }
 
 function closeCloseModal(){
@@ -553,28 +620,43 @@ $('close-modal-cancel').onclick=closeCloseModal;
 $('close-overlay').onclick=e=>{if(e.target===$('close-overlay'))closeCloseModal();};
 
 $('close-modal-save').addEventListener('click',async()=>{
-  const job=curJob;
-  const r=computeClosing(job,closeData);
-  const {profit,...closingData}=r;
-  const who=job.clientName||'Sin nombre';
+  const jobs=closeSelectedJobs();
+  if(!jobs.length)return;
+  const r=computeClosing(jobs,closeData);
+  const {perJob,profit,...group}=r;
+  const groupId=`c${Date.now()}`;
+  const jobIds=jobs.map(j=>j.id);
+  const names=jobs.map(j=>(j.clientName||'Sin nombre').trim()).join(', ');
+  const closeDate=closeData.ds;
   const btn=$('close-modal-save');
   btn.innerHTML='<span class="spin"></span>';btn.disabled=true;
   try{
-    await setDoc(doc(db,'trabajos',job.id),{
-      status:'completado',profit,closingData,
-      vehicles:r.vehicles.map(({type,plan})=>({type,plan})),
-      completedBy:auth.currentUser.email,completedAt:serverTimestamp()
-    },{merge:true});
-    // Finanzas: cobro = ingreso; costes y pago a socios = gastos → el balance es el beneficio del negocio
-    const base={date:job.date,jobId:job.id,createdBy:auth.currentUser.email,createdAt:serverTimestamp()};
-    if(Number(job.price))await addDoc(collection(db,'finanzas'),{...base,type:'income',amount:Number(job.price),description:`Cobro: ${who}`});
-    if(r.totalCost)await addDoc(collection(db,'finanzas'),{...base,type:'expense',amount:r.totalCost,description:`Costes trabajo: ${who}`});
+    const who=auth.currentUser.email;
+    for(const j of jobs){
+      const pj=perJob.find(p=>p.id===j.id);
+      await setDoc(doc(db,'trabajos',j.id),{
+        status:'completado',profit:pj.profit,
+        closingData:{groupId,jobIds,closeDate,share:pj.share,allocCost:pj.allocCost,
+          allocPartners:pj.allocPartners,allocMargin:pj.allocMargin,group:{...group,profit}},
+        completedBy:who,completedAt:serverTimestamp()
+      },{merge:true});
+    }
+    // Finanzas: un ingreso por trabajo; los costes y el pago a socios, una vez por cierre
+    const base={date:closeDate,groupId,jobIds,createdBy:who,createdAt:serverTimestamp()};
+    for(const j of jobs)if(Number(j.price))
+      await addDoc(collection(db,'finanzas'),{...base,jobId:j.id,type:'income',amount:Number(j.price),description:`Cobro: ${(j.clientName||'Sin nombre').trim()}`});
+    if(r.totalCost)await addDoc(collection(db,'finanzas'),{...base,type:'expense',amount:r.totalCost,
+      description:jobs.length>1?`Costes ${fmtDateEs(closeDate)}: ${names}`:`Costes trabajo: ${names}`});
     for(const [name,amount] of Object.entries(r.partnerPay))
-      await addDoc(collection(db,'finanzas'),{...base,type:'expense',amount,description:`Pago socio ${name}: ${who}`,partner:name});
-    toast('✅ Trabajo cerrado','ok');
+      await addDoc(collection(db,'finanzas'),{...base,type:'expense',amount,partner:name,
+        description:`Pago socio ${name} · ${jobs.length>1?fmtDateEs(closeDate):names}`});
+    toast(jobs.length>1?`✅ ${jobs.length} trabajos cerrados`:'✅ Trabajo cerrado','ok');
     closeCloseModal();
-    curJob={...curJob,status:'completado',profit,closingData};
-    renderDetailView();
+    if(curView==='detail'&&curJob&&jobIds.includes(curJob.id)){
+      const pj=perJob.find(p=>p.id===curJob.id);
+      curJob={...curJob,status:'completado',profit:pj.profit,closingData:{groupId,jobIds,closeDate,share:pj.share,allocCost:pj.allocCost,allocPartners:pj.allocPartners,allocMargin:pj.allocMargin,group:{...group,profit}}};
+      renderDetailView();
+    }
   }catch(e){toast('Error: '+e.message,'err');}
   finally{btn.textContent='Confirmar y cerrar';btn.disabled=false;}
 });
