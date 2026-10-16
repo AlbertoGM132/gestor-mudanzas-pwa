@@ -138,6 +138,7 @@ let curView='cal',curJob=null,isEditing=false,activeTab='info',formState={},form
 // Valores por defecto (oct. 2026); se sobrescriben con config/tarifas
 let tarifas={workerHour:10,partnerHour:22,businessPct:10,roundTo:5,extraKm:0.22,
   rent_furgoneta_200:73,rent_furgoneta_400:88,rent_camion_200:133,rent_camion_400:150,
+  fuelPrice:2,consumo_crafter:10,consumo_iveco:14,   // €/L y L/100 km
   reviewUrl:'',
   ...Object.fromEntries(MATERIALS.map(m=>[m,0]))};
 let finEntries=[]; // loaded from Firestore
@@ -402,7 +403,7 @@ function renderDetailView(){
       ${row('Km extra',g.totalExtraKm)}
       ${row('Personal',g.totalLabor)}
       ${row('Material gastado',g.totalMaterials)}
-      ${row('Gasolina',g.fuel)}
+      ${row('Gasoil',g.fuel)}
       ${row('Otros gastos',g.extras)}`}
       ${cd.allocMargin!=null||g.margin!=null?`<div class="detail-row" style="padding-top:6px;border-top:1px solid var(--border)"><span>Margen del trabajo</span><strong>${fmt(shared?cd.allocMargin:g.margin)} €</strong></div>`:''}
       ${shared?row('Su parte del pago a socios',cd.allocPartners):Object.entries(g.partnerPay||{}).map(([n,v])=>row(`Cobra ${esc(n)}`,v)).join('')}
@@ -545,6 +546,24 @@ $('btn-edit-job').onclick=editCurJob;
 //  CLOSE MODAL — CIERRE ECONÓMICO
 // ════════════════════════════════════════
 // ── PRESUPUESTO: coste real + % para el negocio ──
+// ── Gasoil: km de cada vehículo × su consumo (L/100 km) × precio del litro ──
+function fuelAuto(vehicles,t=tarifas){
+  let liters=0;
+  (vehicles||[]).forEach(v=>{liters+=Number(v.km||0)*Number(t[`consumo_${v.type}`]||0)/100;});
+  return {liters:Math.round(liters*10)/10,cost:Math.round(liters*Number(t.fuelPrice||0)*100)/100};
+}
+// Si se escribe un importe a mano manda ese; si el campo está vacío se usa el automático
+function pickFuel(manual,auto){
+  return manual!==''&&manual!=null&&!isNaN(Number(manual))?Number(manual):auto;
+}
+function fuelHint(vehicles,manual,t=tarifas){
+  const a=fuelAuto(vehicles,t);
+  const km=(vehicles||[]).reduce((s,v)=>s+Number(v.km||0),0);
+  if(!km)return `Pon los km de cada vehículo y se calcula solo (${fmt(t.fuelPrice)} €/L).`;
+  const auto=`${fmt(km)} km → ${fmt(a.liters)} L × ${fmt(t.fuelPrice)} €/L = ${fmt(a.cost)} €`;
+  return pickFuel(manual,null)==null?`Automático: ${auto}`:`Puesto a mano (el automático sería ${fmt(a.cost)} €). Borra la cifra para volver al automático.`;
+}
+
 // est = {vehicles:[{type,plan,days,km}], hours, workers, partners, matQty:{}, fuel, extras}
 function computeEstimate(est,t=tarifas){
   const r2=x=>Math.round(x*100)/100;
@@ -560,14 +579,15 @@ function computeEstimate(est,t=tarifas){
   const partners=hours*Number(est.partners||0)*Number(t.partnerHour||0);
   let materials=0;
   Object.entries(est.matQty||{}).forEach(([m,q])=>{if(!REUSABLE.includes(m))materials+=Number(q||0)*Number(t[m]||0);});
-  const fuel=Number(est.fuel||0),extras=Number(est.extras||0);
+  const auto=fuelAuto(est.vehicles,t);
+  const fuel=r2(pickFuel(est.fuel,auto.cost)),extras=Number(est.extras||0);
   const cost=r2(rent+extraKm+labor+partners+materials+fuel+extras);
   const business=r2(cost*Number(t.businessPct||0)/100);
   const step=Number(t.roundTo||0);
   const raw=cost+business;
   const price=step>0?Math.ceil(Math.round(raw/step*1e6)/1e6)*step:r2(raw);   // mismo redondeo que el conector
   return {rent:r2(rent),extraKm:r2(extraKm),labor:r2(labor),partners:r2(partners),materials:r2(materials),
-    fuel,extras,cost,business,price,businessReal:r2(price-cost)};
+    fuel,fuelAuto:auto.cost,fuelLiters:auto.liters,extras,cost,business,price,businessReal:r2(price-cost)};
 }
 
 let closeData = {};
@@ -601,7 +621,8 @@ function computeClosing(jobs,inp,t=tarifas){
     q=Number(q||0);if(!q||REUSABLE.includes(m))return;
     matQty[m]=q;totalMaterials+=q*Number(t[m]||0);
   });
-  const fuel=Number(inp.fuel||0),extras=Number(inp.extras||0);
+  const auto=fuelAuto(inp.vehicles,t);
+  const fuel=r2(pickFuel(inp.fuel,auto.cost)),extras=Number(inp.extras||0);
   const totalCost=r2(totalVehicles+totalExtraKm+totalLabor+totalMaterials+fuel+extras);
   const partnerPay={};let totalPartners=0;
   Object.entries(inp.partnerPay||{}).forEach(([name,v])=>{v=Number(v||0);if(!v)return;partnerPay[name]=v;totalPartners+=v;});
@@ -617,7 +638,7 @@ function computeClosing(jobs,inp,t=tarifas){
     const allocMargin=r2(Number(j.price||0)-costs[i]);
     return {id:j.id,share:shares[i],allocCost:costs[i],allocPartners:parts[i],allocMargin,profit:r2(allocMargin-parts[i])};
   });
-  return {vehicles,hours,matQty,fuel,extras,partnerPay,revenue,
+  return {vehicles,hours,matQty,fuel,fuelAuto:auto.cost,fuelLiters:auto.liters,extras,partnerPay,revenue,
     totalVehicles:r2(totalVehicles),totalExtraKm:r2(totalExtraKm),totalLabor:r2(totalLabor),
     totalMaterials:r2(totalMaterials),totalCost,margin,totalPartners,
     profit:r2(margin-totalPartners),perJob};     // profit = beneficio que queda para el negocio
@@ -704,7 +725,8 @@ function renderCloseModal(){
     </div>
     <div class="form-section">
       <div class="form-section-title">⛽ Otros gastos</div>
-      <div class="fi"><label>Gasolina / gasoil (€)</label><input type="number" id="chk-fuel" min="0" step="0.5" placeholder="0.00" value="${esc(String(c.fuel))}" /></div>
+      <div class="fi"><label>Gasoil (€) · se calcula con los km de los vehículos</label><input type="number" id="chk-fuel" min="0" step="0.5" placeholder="auto" value="${esc(String(c.fuel))}" />
+        <div class="fuel-hint" id="chk-fuel-hint"></div></div>
       <div class="fi"><label>Otros: peajes, parking, comida… (€)</label><input type="number" id="chk-extras" min="0" step="0.5" placeholder="0.00" value="${esc(String(c.extras))}" /></div>
     </div>
     <div class="form-section">
@@ -752,6 +774,8 @@ function updateCloseCalc(){
   const sel=closeSelectedJobs();
   const r=computeClosing(sel,closeData);
   const pClass=r.profit>=0?'profit-pos':'profit-neg';
+  const fh=$('chk-fuel-hint');if(fh)fh.textContent=fuelHint(closeData.vehicles,closeData.fuel);
+  const fi=$('chk-fuel');if(fi)fi.placeholder=r.fuelAuto?String(r.fuelAuto):'auto';
   const hint=$('close-margin-hint');
   if(hint)hint.textContent=`Pon vuestras horas y se calcula lo que cobra cada uno. Margen después de gastos: ${fmt(r.margin)} €; lo que no os repartáis queda para el negocio.`;
   const line=(l,v)=>`<div class="calc-row" style="color:var(--muted)"><span>${l}</span><span>-${fmt(v)} €</span></div>`;
@@ -763,7 +787,7 @@ function updateCloseCalc(){
     ${line(`Km extra${kmNote?` (${kmNote})`:''}`,r.totalExtraKm)}
     ${line(`Personal (${fmt(tarifas.workerHour)} €/h)`,r.totalLabor)}
     ${line('Material gastado',r.totalMaterials)}
-    ${line('Gasolina',r.fuel)}
+    ${line(`Gasoil${r.fuelLiters&&r.fuel===r.fuelAuto?` (${fmt(r.fuelLiters)} L)`:''}`,r.fuel)}
     ${line('Otros gastos',r.extras)}
     <div class="calc-row total"><span>Total costes</span><span>${fmt(r.totalCost)} €</span></div>
     <div class="calc-row"><span>Margen</span><span>${fmt(r.margin)} €</span></div>
@@ -952,9 +976,10 @@ function renderQuoteTab(scroll){
     <div class="form-section">
       <div class="form-section-title">⛽ Otros</div>
       <div class="time-row">
-        <div class="fi"><label>Gasoil (€)</label><input id="q-fuel" type="number" min="0" step="1" placeholder="0" value="${esc(String(e.fuel||''))}" /></div>
+        <div class="fi"><label>Gasoil (€)</label><input id="q-fuel" type="number" min="0" step="1" placeholder="auto" value="${esc(String(e.fuel??''))}" /></div>
         <div class="fi"><label>Otros (€)</label><input id="q-extras" type="number" min="0" step="1" placeholder="0" value="${esc(String(e.extras||''))}" /></div>
       </div>
+      <div class="fuel-hint" id="q-fuel-hint"></div>
     </div>
     <div class="calc-preview" id="quote-calc"></div>
     <button class="btn-complete" id="q-apply">Usar este precio</button>`;
@@ -978,6 +1003,8 @@ function renderQuoteTab(scroll){
 }
 function updateQuoteCalc(){
   const r=computeEstimate(formState.estimate);
+  const fh=$('q-fuel-hint');if(fh)fh.textContent=fuelHint(formState.estimate.vehicles,formState.estimate.fuel);
+  const fi=$('q-fuel');if(fi)fi.placeholder=r.fuelAuto?String(r.fuelAuto):'auto';
   const line=(l,v)=>v?`<div class="calc-row" style="color:var(--muted)"><span>${l}</span><span>${fmt(v)} €</span></div>`:'';
   $('quote-calc').innerHTML=`
     ${line('Alquiler vehículos',r.rent)}
@@ -985,7 +1012,7 @@ function updateQuoteCalc(){
     ${line('Trabajadores',r.labor)}
     ${line('Socios',r.partners)}
     ${line('Material',r.materials)}
-    ${line('Gasoil',r.fuel)}
+    ${line(`Gasoil${r.fuelLiters&&r.fuel===r.fuelAuto?` (${fmt(r.fuelLiters)} L)`:''}`,r.fuel)}
     ${line('Otros',r.extras)}
     <div class="calc-row total"><span>Coste del trabajo</span><span>${fmt(r.cost)} €</span></div>
     <div class="calc-row"><span>+ ${fmt(tarifas.businessPct)} % para el negocio</span><span>${fmt(r.business)} €</span></div>
@@ -1254,6 +1281,13 @@ function renderTarifas(){
       ${row('Camión · 200 km','rent_camion_200',tarifas.rent_camion_200,'€/día')}
       ${row('Camión · 400 km','rent_camion_400',tarifas.rent_camion_400,'€/día')}
       ${row('Km extra','extraKm',tarifas.extraKm,'€/km','0.01')}
+    </div>
+    <div class="tarifa-section">
+      <div class="tarifa-section-title">⛽ Gasoil</div>
+      ${row('Precio del gasoil','fuelPrice',tarifas.fuelPrice,'€/L','0.01')}
+      ${row('Consumo Crafter (furgoneta)','consumo_crafter',tarifas.consumo_crafter,'L/100 km','0.1')}
+      ${row('Consumo Iveco (camión)','consumo_iveco',tarifas.consumo_iveco,'L/100 km','0.1')}
+      <div class="notes-text" style="color:var(--muted)">Con los km de cada vehículo se calcula el gasoil del presupuesto y del cierre (p. ej. 150 km en el Iveco = ${fmt(Math.round(150*Number(tarifas.consumo_iveco||0)/100*Number(tarifas.fuelPrice||0)*100)/100)} €). Si pones un importe a mano, manda ese.</div>
     </div>
     <div class="tarifa-section">
       <div class="tarifa-section-title">📦 Material que se gasta (precio por unidad)</div>

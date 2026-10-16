@@ -12,6 +12,7 @@ from datetime import datetime
 DEFAULT_TARIFAS = {
     "workerHour": 10, "partnerHour": 22, "businessPct": 10, "roundTo": 5, "extraKm": 0.22,
     "rent_furgoneta_200": 73, "rent_furgoneta_400": 88, "rent_camion_200": 133, "rent_camion_400": 150,
+    "fuelPrice": 2, "consumo_crafter": 10, "consumo_iveco": 14,   # €/L y L/100 km
 }
 VEHICLE_KIND = {"crafter": "furgoneta", "iveco": "camion"}
 REUSABLE = {"Mantas de protección", "Fajas de carga", "Traspaleta", "Escalera", "Carretilla"}
@@ -31,6 +32,22 @@ def _r2(x):
     return round(x + 1e-9, 2)
 
 
+def gasoil_auto(vehicles, t):
+    """Litros y € de gasoil: km de cada vehículo × su consumo (L/100 km) × precio del litro."""
+    litros = sum(float(v.get("km") or 0) * float(t.get(f"consumo_{v.get('type')}", 0)) / 100 for v in vehicles or [])
+    return round(litros + 1e-9, 1), _r2(litros * float(t.get("fuelPrice", 0)))
+
+
+def _gasoil_manual(x):
+    """Importe puesto a mano, o None si está vacío (entonces se usa el automático)."""
+    if x is None or x == "":
+        return None
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
 def calcular(est, t):
     """Mismo cálculo que la app: coste real + % para el negocio, redondeado hacia arriba."""
     rent = extra = 0.0
@@ -44,7 +61,10 @@ def calcular(est, t):
     labor = horas * float(est.get("workers") or 0) * float(t.get("workerHour", 0))
     socios = horas * float(est.get("partners") or 0) * float(t.get("partnerHour", 0))
     material = sum(float(q or 0) * float(t.get(m, 0)) for m, q in (est.get("matQty") or {}).items() if m not in REUSABLE)
-    fuel, extras = float(est.get("fuel") or 0), float(est.get("extras") or 0)
+    litros, fuel_auto = gasoil_auto(est.get("vehicles"), t)
+    manual = _gasoil_manual(est.get("fuel"))
+    fuel = _r2(fuel_auto if manual is None else manual)
+    extras = float(est.get("extras") or 0)
     coste = _r2(rent + extra + labor + socios + material + fuel + extras)
     negocio = _r2(coste * float(t.get("businessPct", 0)) / 100)
     paso = float(t.get("roundTo") or 0)
@@ -52,7 +72,8 @@ def calcular(est, t):
     precio = math.ceil(round(bruto / paso, 6)) * paso if paso > 0 else _r2(bruto)
     precio = int(precio) if float(precio).is_integer() else _r2(precio)
     return {"rent": _r2(rent), "extraKm": _r2(extra), "labor": _r2(labor), "partners": _r2(socios),
-            "materials": _r2(material), "fuel": fuel, "extras": extras, "cost": coste,
+            "materials": _r2(material), "fuel": fuel, "fuelAuto": fuel_auto, "fuelLiters": litros,
+            "fuelManual": manual is not None, "extras": extras, "cost": coste,
             "business": negocio, "price": precio, "businessReal": _r2(precio - coste)}
 
 
@@ -75,7 +96,7 @@ def _estimacion(a):
         mat[m] = float(q or 0)
     return {"vehicles": vehs, "hours": float(a.get("horas") or 0), "workers": int(a.get("trabajadores") or 0),
             "partners": int(a.get("socios") or 0), "matQty": mat,
-            "fuel": float(a.get("gasoil") or 0), "extras": float(a.get("otros") or 0)}
+            "fuel": _gasoil_manual(a.get("gasoil")), "extras": float(a.get("otros") or 0)}
 
 
 def _acceso(d):
@@ -146,12 +167,12 @@ ESTIMACION = {
         "tipo": {"type": "string", "enum": ["crafter", "iveco"]},
         "km_plan": {"type": "integer", "enum": [200, 400]},
         "dias": {"type": "integer", "minimum": 1},
-        "km": {"type": "number", "description": "Km totales estimados."}}, "required": ["tipo"]}},
+        "km": {"type": "number", "description": "Km totales estimados (ida y vuelta, todos los días). Sirven para el gasoil y los km extra."}}, "required": ["tipo"]}},
     "horas": {"type": "number", "description": "Horas estimadas de trabajo (incluido viaje) para todo el equipo."},
     "trabajadores": {"type": "integer", "description": "Nº de trabajadores (no socios) a €/h."},
     "socios": {"type": "integer", "minimum": 0, "maximum": 2, "description": "Cuántos socios van (Alberto, Cristian)."},
     "material": {"type": "object", "description": f"Unidades de material que se gasta. Claves: {', '.join(CONSUMIBLES)}."},
-    "gasoil": {"type": "number"},
+    "gasoil": {"type": "number", "description": "Solo si se quiere fijar a mano. Si se omite, se calcula con los km de cada vehículo × su consumo × precio del gasoil (tarifas)."},
     "otros": {"type": "number", "description": "Peajes, parking, etc."},
 }
 DATOS = {
@@ -163,7 +184,7 @@ DATOS = {
 
 TOOLS = [
     {"name": "leer_tarifas", "title": "Leer tarifas",
-     "description": "Devuelve las tarifas actuales de la app (alquiler de vehículos por día y plan de km, €/km extra, €/h trabajador, €/h socio, % de beneficio del negocio, redondeo y precio de cada material).",
+     "description": "Devuelve las tarifas actuales de la app (alquiler de vehículos por día y plan de km, €/km extra, €/h trabajador, €/h socio, % de beneficio del negocio, redondeo, precio del gasoil (€/L), consumo de cada vehículo (L/100 km) y precio de cada material).",
      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
     {"name": "calcular_presupuesto", "title": "Calcular presupuesto",
