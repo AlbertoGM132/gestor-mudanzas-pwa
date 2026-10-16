@@ -1,5 +1,5 @@
 """
-Conector MCP de MudanzaPro (solo lectura) para Claude.
+Conector MCP de MudanzaPro para Claude (lectura + escritura limitada a solicitudes).
 
 Expone los trabajos de la colección 'trabajos' y sus fotos como herramientas
 MCP sobre HTTP (transporte "Streamable HTTP", modo sin estado).
@@ -11,9 +11,10 @@ con la cabecera de solicitud  Authorization: Bearer <MCP_KEY>
 
 La clave MCP_KEY es un secreto de Firebase:
   firebase functions:secrets:set MCP_KEY
-Cualquiera que tenga la clave puede LEER los trabajos, así que no la compartas. Para revocarla, cambia el secreto y vuelve a desplegar.
+Cualquiera que tenga la clave puede leer los trabajos y crear solicitudes, así que no la compartas. Para revocarla, cambia el secreto y vuelve a desplegar.
 
-Por privacidad, el conector NO devuelve teléfono (solo si existe), email ni datos económicos.
+Por privacidad, el conector NO devuelve teléfono (solo si existe), email ni el resultado
+económico de los trabajos cerrados. Escribe solo solicitudes y presupuestos (ver mcp_escritura.py).
 """
 import base64
 import hmac
@@ -24,6 +25,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
+
+import mcp_escritura as esc
 
 MCP_KEY = SecretParam("MCP_KEY")
 
@@ -39,6 +42,7 @@ CAMPOS_PUBLICOS = [
     "originAddress", "originFloor", "originElevator",
     "destinAddress", "destinFloor", "destinElevator",
     "vehicles", "crew", "vehicle", "team", "materials", "notes",
+    "stage", "originAccess", "destinAccess", "price",
 ]
 VEHICULOS = {"crafter": "Furgoneta VW Crafter", "iveco": "Camión Iveco Daily 20 m³"}
 MAX_DIAS = 31
@@ -100,6 +104,9 @@ TOOLS = [
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
 ]
+
+
+TOOLS += esc.TOOLS
 
 
 class ToolError(Exception):
@@ -185,6 +192,12 @@ def resumen_trabajo(doc_id, data):
         inicio = datetime.strptime(data["date"], "%Y-%m-%d").date()
         out["ultimo_dia"] = (inicio + timedelta(days=n - 1)).isoformat()
     out["status"] = STATUS_LABEL.get(data.get("status"), "pendiente")
+    if out["status"] == "completado":
+        out.pop("price", None)          # lo económico de trabajos cerrados no se expone
+    est = data.get("estimate") or {}
+    if isinstance(est.get("result"), dict):
+        out["presupuesto_calculado"] = {k: est["result"].get(k) for k in ("cost", "price")}
+    out["etapa"] = "completado" if out["status"] == "completado" else ("programado" if data.get("date") else (data.get("stage") or "solicitud"))
     out["tiene_telefono"] = _tiene_telefono(data)
     out["faltan"] = faltan(data)
     out["num_fotos"] = len(data.get("photos") or [])
@@ -226,6 +239,27 @@ class FirebaseRepo:
 
     def foto(self, storage_path):
         return self._bucket.blob(storage_path).download_as_bytes()
+
+    # ── escritura (solo solicitudes y presupuestos) ──
+    def tarifas(self):
+        snap = self._db.collection("config").document("tarifas").get()
+        return snap.to_dict() if snap.exists else {}
+
+    def solicitudes(self, etapas):
+        q = self._db.collection("trabajos").where("stage", "in", list(etapas))
+        return [(d.id, d.to_dict() or {}) for d in q.stream()]
+
+    def crear(self, data):
+        ref = self._db.collection("trabajos").document()
+        ref.set(data)
+        return ref.id
+
+    def actualizar(self, doc_id, data):
+        self._db.collection("trabajos").document(doc_id).set(data, merge=True)
+
+    def ahora(self):
+        from firebase_admin import firestore
+        return firestore.SERVER_TIMESTAMP
 
 
 # ── Herramientas ───────────────────────────────────────────
@@ -298,7 +332,43 @@ def tool_fotos(repo, args):
     return contenido
 
 
-HANDLERS = {"listar_mudanzas": tool_listar, "ver_mudanza": tool_ver, "ver_fotos_mudanza": tool_fotos}
+def _dias_desde(ts):
+    if not ts:
+        return None
+    try:
+        if isinstance(ts, str):
+            ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return max(0, (datetime.now(timezone.utc) - ts).days)
+    except Exception:
+        return None
+
+
+def _escritura(fn, con_hora=False, lectura=False):
+    def handler(repo, args):
+        try:
+            if lectura:
+                out = fn(repo, args)
+            elif con_hora:
+                out = fn(repo, args, repo.ahora())
+            else:
+                out = fn(repo, args)
+        except esc.WriteError as e:
+            raise ToolError(str(e))
+        return [_texto(out)]
+    return handler
+
+
+HANDLERS = {
+    "listar_mudanzas": tool_listar, "ver_mudanza": tool_ver, "ver_fotos_mudanza": tool_fotos,
+    "leer_tarifas": _escritura(esc.tool_leer_tarifas, lectura=True),
+    "calcular_presupuesto": _escritura(esc.tool_calcular, lectura=True),
+    "listar_solicitudes": _escritura(lambda r, a: esc.tool_listar_solicitudes(r, a, resumen_trabajo, _dias_desde), lectura=True),
+    "crear_solicitud": _escritura(esc.tool_crear, con_hora=True),
+    "actualizar_solicitud": _escritura(esc.tool_actualizar, con_hora=True),
+    "guardar_presupuesto": _escritura(esc.tool_guardar_presupuesto, con_hora=True),
+}
 
 
 # ── JSON-RPC / MCP ─────────────────────────────────────────
@@ -324,8 +394,11 @@ def handle_message(msg, repo_factory):
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": SERVER_INFO,
             "instructions": (
-                "Datos de solo lectura de MudanzaPro, la app de gestión de trabajos de "
-                "Mudanzas del Sur (Huelva). Fechas en formato YYYY-MM-DD, hora de Madrid."
+                "MudanzaPro, la app de gestión de trabajos de Mudanzas del Sur (Huelva). "
+                "Lectura de trabajos, fotos y solicitudes; escritura limitada a crear/editar "
+                "solicitudes y presupuestos y programar fechas (nunca borra ni cierra trabajos). "
+                "Antes de crear o modificar algo, enséñale a Alberto lo que vas a guardar y espera su OK. "
+                "Precios sin IVA. Fechas YYYY-MM-DD, hora de Madrid."
             ),
         })
     if method == "ping":

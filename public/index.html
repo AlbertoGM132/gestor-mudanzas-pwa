@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
 <div id="app">
@@ -109,6 +109,14 @@
     </div>
 
 
+    <!-- ── SOLICITUDES ── -->
+    <div class="view" id="view-solicitudes">
+      <div class="sub-header" style="justify-content:center">
+        <div class="sub-title">📥 Solicitudes</div>
+      </div>
+      <div class="pres-content" id="solicitudes-content"></div>
+    </div>
+
     <!-- ── PRESUPUESTOS ── -->
     <div class="view" id="view-presupuestos">
       <div class="sub-header" style="justify-content:center">
@@ -138,6 +146,7 @@
   <!-- BOTTOM NAV -->
   <nav id="bottom-nav">
     <button class="nav-btn active" data-view="cal"><span class="nav-icon">📅</span>Calendario</button>
+    <button class="nav-btn" data-view="solicitudes"><span class="nav-icon">📥<span id="pipe-badge" class="nav-badge" style="display:none"></span></span>Solicitudes</button>
     <button class="nav-btn" data-view="tarifas"><span class="nav-icon">💰</span>Tarifas</button>
     <button class="nav-btn" data-view="finanzas"><span class="nav-icon">📊</span>Finanzas</button>
     <button class="nav-btn" data-view="presupuestos"><span class="nav-icon">📄</span>Presupuestos</button>
@@ -168,6 +177,6 @@
 <!-- ══════════════════════════════════
      🔥 FIREBASE
      ══════════════════════════════════ -->
-<script type="module" src="app.js?v=4"></script>
+<script type="module" src="app.js?v=5"></script>
 </body>
 </html>

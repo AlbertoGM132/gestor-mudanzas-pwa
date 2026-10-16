@@ -398,3 +398,15 @@
     .veh-close-inputs label{flex:1;display:flex;flex-direction:column;gap:3px;font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase}
     .veh-close-inputs input{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:var(--font);font-size:.86rem;width:100%}
     .calc-split{margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);font-size:.78rem}
+    /* ── Solicitudes / presupuestos ── */
+    .pipe-section{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+    .pipe-title{font-size:.9rem;font-weight:800;display:flex;align-items:center;gap:8px}
+    .pipe-count{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:20px;padding:1px 9px;font-size:.72rem;color:var(--muted)}
+    .pipe-hint{font-size:.72rem;color:var(--muted);margin-top:-6px}
+    .pipe-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .pipe-btns .btn{flex:1 1 auto;min-height:40px}
+    .pipe-actions{border-color:var(--indigo)}
+    .nav-icon{position:relative}
+    .nav-badge{position:absolute;top:-4px;right:-10px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--amber);color:#111;font-size:.6rem;font-weight:800;align-items:center;justify-content:center}
+    .tri-wrap{flex-wrap:wrap}
+    .tri-wrap .tri-opt{flex:1 1 calc(50% - 8px)}
