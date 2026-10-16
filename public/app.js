@@ -291,8 +291,10 @@ function renderDetailView(){
       ${row('Material gastado',cd.totalMaterials)}
       ${row('Gasolina',cd.fuel)}
       ${row('Otros gastos',cd.extras)}
+      ${cd.margin!=null?`<div class="detail-row" style="padding-top:6px;border-top:1px solid var(--border)"><span>Margen del trabajo</span><strong>${fmt(cd.margin)} €</strong></div>`:''}
+      ${Object.entries(cd.partnerPay||{}).map(([n,v])=>row(`Cobra ${esc(n)}`,v)).join('')}
       <div class="detail-row" style="margin-top:4px;padding-top:8px;border-top:1px solid var(--border)">
-        <span style="font-weight:800">Beneficio para los socios</span>
+        <span style="font-weight:800">Beneficio para el negocio</span>
         <strong style="color:${pColor};font-size:1.05rem">${job.profit>=0?'+':''}${fmt(job.profit)} €</strong>
       </div>
     </div>`;
@@ -416,9 +418,14 @@ function computeClosing(job,inp,t=tarifas){
   const fuel=Number(inp.fuel||0),extras=Number(inp.extras||0);
   const r2=x=>Math.round(x*100)/100;
   const totalCost=r2(totalVehicles+totalExtraKm+totalLabor+totalMaterials+fuel+extras);
-  return {vehicles,hours,matQty,fuel,extras,
+  // Lo que cobra cada socio en este trabajo (se decide en cada cierre)
+  const partnerPay={};let totalPartners=0;
+  Object.entries(inp.partnerPay||{}).forEach(([name,v])=>{v=Number(v||0);if(!v)return;partnerPay[name]=v;totalPartners+=v;});
+  const margin=r2(Number(job.price||0)-totalCost);
+  return {vehicles,hours,matQty,fuel,extras,partnerPay,
     totalVehicles:r2(totalVehicles),totalExtraKm:r2(totalExtraKm),totalLabor:r2(totalLabor),
-    totalMaterials:r2(totalMaterials),totalCost,profit:r2(Number(job.price||0)-totalCost)};
+    totalMaterials:r2(totalMaterials),totalCost,margin,totalPartners:r2(totalPartners),
+    profit:r2(margin-totalPartners)};   // profit = beneficio que queda para el negocio
 }
 
 function openCloseModal(){
@@ -428,7 +435,8 @@ function openCloseModal(){
   closeData={
     vehicles:jobVehicles(job).map(v=>({...v,km:''})),
     hours:Object.fromEntries(people.map(p=>[p,''])),
-    matQty:{},fuel:'',extras:'',people,crew};
+    matQty:{},fuel:'',extras:'',people,crew,
+    partnerPay:Object.fromEntries(PARTNERS.map(p=>[p,'']))};
   renderCloseModal();
   $('close-overlay').classList.add('open');
   document.body.style.overflow='hidden';
@@ -438,7 +446,6 @@ function renderCloseModal(){
   const job=curJob,c=closeData,days=jobDays(job);
   const body=$('close-modal-body');
   const consumables=MATERIALS.filter(m=>!REUSABLE.includes(m));
-  const partnersHere=PARTNERS.filter(p=>c.crew.includes(p)||!c.crew.length);
   body.innerHTML=`
     <div class="form-section">
       <div class="form-section-title">🚛 Vehículos (${days} día${days>1?'s':''} de alquiler)</div>
@@ -455,7 +462,6 @@ function renderCloseModal(){
     </div>
     <div class="form-section">
       <div class="form-section-title">⏱ Horas de cada trabajador (incluido el viaje)</div>
-      ${partnersHere.length?`<div class="notes-text" style="color:var(--muted);margin-bottom:4px">${partnersHere.join(' y ')}: socios, salen del beneficio.</div>`:''}
       <div class="worker-hours-grid">
         ${c.people.map(p=>`
           <div class="worker-row">
@@ -485,6 +491,18 @@ function renderCloseModal(){
       <div class="fi"><label>Gasolina / gasoil (€)</label><input type="number" id="chk-fuel" min="0" step="0.5" placeholder="0.00" value="${esc(String(c.fuel))}" /></div>
       <div class="fi"><label>Otros: peajes, parking, comida… (€)</label><input type="number" id="chk-extras" min="0" step="0.5" placeholder="0.00" value="${esc(String(c.extras))}" /></div>
     </div>
+    <div class="form-section">
+      <div class="form-section-title">💼 Lo que cobráis los socios en este trabajo</div>
+      <div class="notes-text" style="color:var(--muted);margin-bottom:4px" id="close-margin-hint"></div>
+      <div class="worker-hours-grid">
+        ${PARTNERS.map(p=>`
+          <div class="worker-row">
+            <span class="worker-label">${esc(p)}</span>
+            <input class="worker-input" type="number" min="0" step="1" placeholder="0" data-partner="${esc(p)}" value="${esc(String(c.partnerPay[p]??''))}" />
+            <span style="font-size:.75rem;color:var(--muted)">€</span>
+          </div>`).join('')}
+      </div>
+    </div>
     <div class="calc-preview" id="close-calc"></div>`;
 
   body.querySelectorAll('[data-vkm]').forEach(inp=>inp.oninput=()=>{c.vehicles[+inp.dataset.vkm].km=inp.value;updateCloseCalc();});
@@ -492,6 +510,7 @@ function renderCloseModal(){
   body.querySelectorAll('[data-vadd]').forEach(b=>b.onclick=()=>{const[type,plan]=b.dataset.vadd.split('|');c.vehicles.push({type,plan:+plan,km:''});renderCloseModal();});
   body.querySelectorAll('[data-worker]').forEach(inp=>inp.oninput=()=>{c.hours[inp.dataset.worker]=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-mat]').forEach(inp=>inp.oninput=()=>{c.matQty[inp.dataset.mat]=inp.value;updateCloseCalc();});
+  body.querySelectorAll('[data-partner]').forEach(inp=>inp.oninput=()=>{c.partnerPay[inp.dataset.partner]=inp.value;updateCloseCalc();});
   $('chk-fuel').oninput=e=>{c.fuel=e.target.value;updateCloseCalc();};
   $('chk-extras').oninput=e=>{c.extras=e.target.value;updateCloseCalc();};
   $('close-add-person').onclick=()=>{
@@ -505,6 +524,8 @@ function renderCloseModal(){
 function updateCloseCalc(){
   const r=computeClosing(curJob,closeData);
   const pClass=r.profit>=0?'profit-pos':'profit-neg';
+  const hint=$('close-margin-hint');
+  if(hint)hint.textContent=`Margen después de gastos: ${fmt(r.margin)} €. Lo que no os repartáis queda para el negocio.`;
   const line=(l,v)=>`<div class="calc-row" style="color:var(--muted)"><span>${l}</span><span>-${fmt(v)} €</span></div>`;
   const kmNote=r.vehicles.filter(v=>v.extraKm>0).map(v=>`${v.extraKm} km extra`).join(', ');
   $('close-calc').innerHTML=`
@@ -516,7 +537,9 @@ function updateCloseCalc(){
     ${line('Gasolina',r.fuel)}
     ${line('Otros gastos',r.extras)}
     <div class="calc-row total"><span>Total costes</span><span>${fmt(r.totalCost)} €</span></div>
-    <div class="calc-row ${pClass}"><span>💰 Beneficio para los socios</span><span>${r.profit>=0?'+':''}${fmt(r.profit)} €</span></div>
+    <div class="calc-row"><span>Margen del trabajo</span><span>${fmt(r.margin)} €</span></div>
+    ${Object.entries(r.partnerPay).map(([n,v])=>line(`Cobra ${esc(n)}`,v)).join('')}
+    <div class="calc-row ${pClass}"><span>🏢 Beneficio para el negocio</span><span>${r.profit>=0?'+':''}${fmt(r.profit)} €</span></div>
     ${!Number(curJob.price)?'<div class="calc-row" style="color:var(--danger)"><span>⚠️ Este trabajo no tiene precio apuntado</span></div>':''}`;
 }
 
@@ -542,10 +565,12 @@ $('close-modal-save').addEventListener('click',async()=>{
       vehicles:r.vehicles.map(({type,plan})=>({type,plan})),
       completedBy:auth.currentUser.email,completedAt:serverTimestamp()
     },{merge:true});
-    // Finanzas: el cobro como ingreso y los costes como gasto (antes se apuntaba el beneficio como ingreso)
+    // Finanzas: cobro = ingreso; costes y pago a socios = gastos → el balance es el beneficio del negocio
     const base={date:job.date,jobId:job.id,createdBy:auth.currentUser.email,createdAt:serverTimestamp()};
     if(Number(job.price))await addDoc(collection(db,'finanzas'),{...base,type:'income',amount:Number(job.price),description:`Cobro: ${who}`});
     if(r.totalCost)await addDoc(collection(db,'finanzas'),{...base,type:'expense',amount:r.totalCost,description:`Costes trabajo: ${who}`});
+    for(const [name,amount] of Object.entries(r.partnerPay))
+      await addDoc(collection(db,'finanzas'),{...base,type:'expense',amount,description:`Pago socio ${name}: ${who}`,partner:name});
     toast('✅ Trabajo cerrado','ok');
     closeCloseModal();
     curJob={...curJob,status:'completado',profit,closingData};
@@ -842,7 +867,7 @@ function renderTarifas(){
     <div class="tarifa-section">
       <div class="tarifa-section-title">👷 Personal</div>
       ${row('Trabajador por hora (incluye viaje)','workerHour',tarifas.workerHour,'€/h')}
-      <div class="notes-text" style="color:var(--muted)">Los socios (${PARTNERS.join(' y ')}) no cuentan como coste: cobran del beneficio.</div>
+      <div class="notes-text" style="color:var(--muted)">Los socios (${PARTNERS.join(' y ')}) no cobran por horas: en cada cierre apuntáis lo que cobra cada uno.</div>
     </div>
     <div class="tarifa-section">
       <div class="tarifa-section-title">🚛 Alquiler de vehículos (por día, sin IVA)</div>
