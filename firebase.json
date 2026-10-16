@@ -26,6 +26,17 @@
     ],
     "rewrites": [
       {
+        "source": "/api/solicitud",
+        "function": {
+          "functionId": "solicitud_publica",
+          "region": "europe-west1"
+        }
+      },
+      {
+        "source": "/presupuesto",
+        "destination": "/presupuesto.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

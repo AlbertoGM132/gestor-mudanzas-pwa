@@ -5,7 +5,7 @@
 // ══════════════════════════════════════════════════════════════
 
 // Versión del caché de la PWA
-const CACHE_NAME  = 'mudanza-v2';
+const CACHE_NAME  = 'mudanza-v3';
 const CACHE_FILES = ['/', '/index.html', '/manifest.json'];
 
 // ── Firebase SDK (modo compat, requerido en SW) ──
@@ -30,8 +30,9 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage(payload => {
   console.log('[SW] Notificación en background:', payload);
 
-  const { title = '📦 MudanzaApp', body = 'Nueva actualización', icon = '/icon-192.png' }
-    = payload.notification || {};
+  // Los avisos del servidor (p. ej. nueva solicitud del formulario) vienen solo con datos
+  const { title = '📦 MudanzaPro', body = 'Nueva actualización', icon = '/icon-192.png' }
+    = payload.notification || payload.data || {};
 
   self.registration.showNotification(title, {
     body,
@@ -39,7 +40,7 @@ messaging.onBackgroundMessage(payload => {
     badge:  '/icon-192.png',
     vibrate: [200, 100, 200],
     data:   payload.data || {},
-    actions: [{ action: 'open', title: 'Ver inventario' }]
+    actions: [{ action: 'open', title: 'Abrir' }]
   });
 });
 

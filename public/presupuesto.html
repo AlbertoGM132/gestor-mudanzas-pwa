@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Pide tu presupuesto · Mudanzas del Sur</title>
+<meta name="description" content="Presupuesto de mudanza gratis en Huelva, Sevilla y toda Andalucía. Contesta unas preguntas con botones y te respondemos por WhatsApp en el día." />
+<meta property="og:title" content="Pide tu presupuesto de mudanza · Mudanzas del Sur" />
+<meta property="og:description" content="Gratis y en 2 minutos. Te contestamos por WhatsApp en el día." />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#c2410c" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#fbf5ec; --card:#ffffff; --ink:#1d2433; --muted:#5b6474; --line:#e6dccd;
+    --accent:#c2410c; --accentHi:#f97316; --accentSoft:#fff1e4; --ok:#15803d; --okSoft:#e8f6ec;
+    --danger:#b91c1c; --wa:#128c4a;
+    --radius:16px; --font:'Nunito',system-ui,-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:19px;line-height:1.45;min-height:100dvh;display:flex;flex-direction:column}
+  button,input,textarea{font:inherit;color:inherit}
+  button{cursor:pointer}
+  :focus-visible{outline:3px solid var(--accentHi);outline-offset:2px}
+  .wrap{width:100%;max-width:560px;margin:0 auto;padding:0 16px}
+
+  /* Cabecera */
+  header{background:var(--ink);color:#fff;padding:14px 0 12px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:1.05rem;letter-spacing:.2px}
+  .brand .truck{font-size:1.5rem}
+  .brand small{display:block;font-weight:600;font-size:.78rem;opacity:.75;letter-spacing:0}
+  .progress{margin-top:12px;display:none}
+  .progress.on{display:block}
+  .progress-label{font-size:.85rem;opacity:.85;margin-bottom:5px}
+  .bar{height:8px;border-radius:99px;background:rgba(255,255,255,.18);overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--accentHi);border-radius:99px;transition:width .25s}
+
+  main{flex:1;padding:22px 0 150px}
+  h1{font-size:1.6rem;line-height:1.2;font-weight:900;margin-bottom:8px}
+  h1:focus{outline:none}
+  .help{color:var(--muted);margin-bottom:18px;font-size:1rem}
+  h2{font-size:1.15rem;font-weight:800;margin:22px 0 10px}
+
+  /* Opciones grandes */
+  .opts{display:grid;gap:10px}
+  .opts.two{grid-template-columns:1fr 1fr}
+  .opts.three{grid-template-columns:repeat(3,1fr)}
+  .opt{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:12px 16px;text-align:left;background:var(--card);border:2px solid var(--line);border-radius:var(--radius);font-weight:800;font-size:1.05rem;transition:border-color .15s,background .15s}
+  .opt .em{font-size:1.6rem;flex:none;width:34px;text-align:center}
+  .opt small{display:block;font-weight:600;color:var(--muted);font-size:.88rem}
+  .opt.center{justify-content:center;text-align:center}
+  .opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accentSoft);box-shadow:inset 0 0 0 1px var(--accent)}
+  .opt[aria-pressed="true"]::after{content:"✓";margin-left:auto;color:var(--accent);font-weight:900;font-size:1.3rem}
+  .opt.center[aria-pressed="true"]::after{margin-left:6px}
+
+  /* Campos */
+  .field{margin-bottom:16px}
+  .field label{display:block;font-weight:800;margin-bottom:6px}
+  .field label small{font-weight:600;color:var(--muted)}
+  .field input,.field textarea{width:100%;min-height:58px;padding:14px 16px;font-size:1.1rem;background:var(--card);border:2px solid var(--line);border-radius:var(--radius)}
+  .field textarea{min-height:120px;resize:vertical}
+  .field input:focus,.field textarea:focus{border-color:var(--accent);outline:none}
+  .field .err{color:var(--danger);font-weight:700;font-size:.95rem;margin-top:6px}
+
+  /* Fotos */
+  .photo-btns{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+  .photo-btn{min-height:96px;flex-direction:column;justify-content:center;text-align:center;gap:4px}
+  .photo-btn .em{font-size:2rem;width:auto}
+  .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+  .thumb{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:#eee}
+  .thumb img{width:100%;height:100%;object-fit:cover}
+  .thumb button{position:absolute;top:6px;right:6px;width:36px;height:36px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:1.1rem}
+  .count{margin-top:10px;font-weight:800;color:var(--ok)}
+  .busy{margin-top:10px;color:var(--muted);font-weight:700}
+
+  /* Barra inferior */
+  .actions{position:fixed;left:0;right:0;bottom:0;background:rgba(251,245,236,.97);border-top:1px solid var(--line);padding:12px 0 calc(12px + env(safe-area-inset-bottom))}
+  .actions .row{display:flex;gap:10px}
+  .btn{min-height:60px;border-radius:var(--radius);border:none;font-weight:900;font-size:1.15rem;padding:0 18px}
+  .btn-main{flex:1;background:var(--accent);color:#fff}
+  .btn-main:disabled{background:#d6c9b8;color:#fff}
+  .btn-back{background:var(--card);border:2px solid var(--line);color:var(--ink);min-width:96px}
+  .wa-help{display:block;text-align:center;margin-top:8px;font-size:.95rem;color:var(--wa);font-weight:800;text-decoration:none}
+  .wa-help span{text-decoration:underline}
+
+  /* Portada y final */
+  .hero{background:var(--card);border-radius:22px;padding:24px 20px;border:1px solid var(--line)}
+  .hero h1{font-size:1.85rem}
+  .ticks{list-style:none;margin:16px 0 4px;display:grid;gap:8px}
+  .ticks li{display:flex;gap:10px;font-weight:700}
+  .ticks li::before{content:"✓";color:var(--ok);font-weight:900}
+  .btn-block{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:14px;text-decoration:none;text-align:center;padding:10px 18px}
+  .btn-wa{background:var(--wa);color:#fff}
+  .btn-ghost{background:transparent;border:2px solid var(--line);color:var(--ink)}
+  .slogan{margin-top:18px;text-align:center;color:var(--muted);font-style:italic;font-size:.95rem}
+  .done{text-align:center}
+  .done .big{font-size:3.4rem}
+  .alert{background:#fdecea;border:2px solid #f5c2bd;color:#7f1d1d;border-radius:var(--radius);padding:14px 16px;margin-top:16px;font-weight:700}
+  .privacy{font-size:.85rem;color:var(--muted);margin-top:6px}
+  .sending{position:fixed;inset:0;background:rgba(29,36,51,.55);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+  .sending.on{display:flex}
+  .sending div{background:#fff;border-radius:20px;padding:26px 22px;text-align:center;font-weight:800;max-width:340px}
+  .spin{width:44px;height:44px;border:5px solid var(--accentSoft);border-top-color:var(--accent);border-radius:50%;margin:0 auto 14px;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  @media (max-width:360px){body{font-size:18px}.opts.three{grid-template-columns:1fr 1fr}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="brand"><span class="truck" aria-hidden="true">🚚</span><div>Mudanzas del Sur<small>Huelva · Sevilla · toda Andalucía</small></div></div>
+    <div class="progress" id="progress" aria-hidden="true">
+      <div class="progress-label" id="progress-label"></div>
+      <div class="bar"><i id="bar"></i></div>
+    </div>
+  </div>
+</header>
+
+<main><div class="wrap" id="step" aria-live="polite"></div></main>
+
+<div class="actions" id="actions" hidden>
+  <div class="wrap">
+    <div class="row">
+      <button class="btn btn-back" id="btn-back" type="button">‹ Atrás</button>
+      <button class="btn btn-main" id="btn-next" type="button">Siguiente</button>
+    </div>
+    <a class="wa-help" id="wa-help" target="_blank" rel="noopener">¿Te lías? <span>Escríbenos por WhatsApp</span></a>
+  </div>
+</div>
+
+<div class="sending" id="sending" role="alertdialog" aria-modal="true" aria-labelledby="sending-txt">
+  <div><div class="spin"></div><p id="sending-txt">Enviando…</p></div>
+</div>
+
+<!-- Campo trampa para bots: las personas no lo ven -->
+<div class="hp" aria-hidden="true"><label>Web <input id="hp-web" tabindex="-1" autocomplete="off" /></label></div>
+
+<input type="file" id="in-camera" accept="image/*" capture="environment" multiple hidden />
+<input type="file" id="in-gallery" accept="image/*" multiple hidden />
+
+<script>
+(() => {
+'use strict';
+// ── Ajustes ──
+const WA = '34659715271';                 // WhatsApp de Mudanzas del Sur
+const ENDPOINT = '/api/solicitud';
+const MAX_FOTOS = 12, LADO = 1280, CALIDAD = 0.76;
+const KEY = 'mds-presupuesto-v1';
+const T0 = Date.now();
+
+const waLink = t => `https://wa.me/${WA}?text=${encodeURIComponent(t)}`;
+const WA_TXT = 'Hola, quiero pedir presupuesto para una mudanza 🙂';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// ── Estado (se guarda en el móvil por si cierra la página; las fotos no) ──
+let S = {servicios:[], origen:{}, destino:{}, destinoNoSe:false, cuando:'', fecha:'', flexible:false,
+         fotosWhatsapp:false, nombre:'', telefono:'', comentario:''};
+let fotos = [];          // [{id, data}]  data = dataURL JPEG ya reducido
+let paso = 0, enviando = false, procesando = 0;
+try { const g = JSON.parse(localStorage.getItem(KEY) || 'null'); if (g && g.S) { S = {...S, ...g.S}; } } catch (e) {}
+const guardar = () => { try { localStorage.setItem(KEY, JSON.stringify({S})); } catch (e) {} };
+
+const TOWNS = ['Huelva','Aljaraque','Punta Umbría','Cartaya','Lepe','Isla Cristina','Ayamonte','Gibraleón','San Juan del Puerto',
+  'Moguer','Palos de la Frontera','Mazagón','El Portil','Trigueros','Niebla','Bollullos Par del Condado','La Palma del Condado',
+  'Almonte','Valverde del Camino','Villablanca','Sevilla','Dos Hermanas','Mairena del Aljarafe','Cádiz','Málaga','Madrid'];
+
+const SERV = [
+  ['mudanza','🏠','Mudanza completa','Toda la casa o el piso'],
+  ['porte','🛋️','Porte','Unos pocos muebles o cosas'],
+  ['montaje','🔧','Desmontar y montar muebles','Armarios, camas, cocinas…'],
+  ['embalaje','📦','Embalar','Cajas, ropa, libros…'],
+  ['fragil','🍽️','Vajilla y cosas frágiles','Cristal, espejos, cuadros…'],
+  ['otro','✏️','Otra cosa','Nos lo cuentas al final'],
+];
+const PISOS = [['bajo','Bajo o casa'],['1','1º'],['2','2º'],['3','3º'],['4','4º o más']];
+const ASC = [['si','Sí'],['no','No'],['nose','No lo sé']];
+const PARK = [['puerta','🚚','En la puerta','Se puede parar justo delante'],['30','👣','Muy cerca','A menos de 30 metros'],
+  ['100','🚶','Un poco lejos','Entre 30 y 100 metros'],['mas','🥾','Lejos','A más de 100 metros, o calle sin paso'],
+  ['nose','🤷','No lo sé','Lo miramos nosotros']];
+
+// ── Pasos ──
+const PASOS = [
+  {id:'inicio', render: rInicio, sinBarra:true},
+  {id:'servicios', render: rServicios},
+  {id:'origen', render: () => rLugar('origen', '¿Desde dónde te mudas?', 'Pueblo o ciudad. La calle solo si quieres.')},
+  {id:'origen-piso', render: () => rPiso('origen', '¿Cómo es la casa de ahora?')},
+  {id:'origen-camion', render: () => rCamion('origen', '¿Dónde puede parar el camión en la casa de ahora?')},
+  {id:'destino', render: () => rLugar('destino', '¿A dónde te mudas?', 'Si todavía no lo sabes, pulsa «Aún no lo sé».')},
+  {id:'destino-piso', render: () => rPiso('destino', '¿Cómo es la casa nueva?'), saltar: () => S.destinoNoSe},
+  {id:'destino-camion', render: () => rCamion('destino', '¿Dónde puede parar el camión en la casa nueva?'), saltar: () => S.destinoNoSe},
+  {id:'cuando', render: rCuando},
+  {id:'fotos', render: rFotos},
+  {id:'datos', render: rDatos, ultimo:true},
+  {id:'hecho', render: rHecho, sinBarra:true, final:true},
+];
+const visibles = () => PASOS.filter(p => !p.sinBarra && !(p.saltar && p.saltar()));
+
+function ir(n, {historial = true} = {}) {
+  paso = Math.max(0, Math.min(PASOS.length - 1, n));
+  if (historial) history.pushState({paso}, '', '');
+  pintar();
+}
+function siguiente() {
+  let n = paso + 1;
+  while (PASOS[n] && PASOS[n].saltar && PASOS[n].saltar()) n++;
+  ir(n);
+}
+function anterior() {
+  if (history.state && history.state.paso > 0) { history.back(); return; }
+  let n = paso - 1;
+  while (n > 0 && PASOS[n].saltar && PASOS[n].saltar()) n--;
+  ir(n, {historial:false});
+}
+window.addEventListener('popstate', e => {
+  if (PASOS[paso] && PASOS[paso].final) { history.pushState({paso}, '', ''); return; }   // ya enviado: no volver
+  paso = (e.state && e.state.paso) || 0; pintar();
+});
+
+function pintar() {
+  const p = PASOS[paso];
+  const cont = $('step');
+  cont.innerHTML = '';
+  p.render(cont);
+  // Barra de progreso
+  const vis = visibles(), i = vis.indexOf(p);
+  $('progress').classList.toggle('on', i >= 0);
+  if (i >= 0) {
+    $('progress-label').textContent = `Pregunta ${i + 1} de ${vis.length}`;
+    $('bar').style.width = `${Math.round((i + 1) / vis.length * 100)}%`;
+  }
+  // Botones de abajo
+  $('actions').hidden = !!(p.sinBarra);
+  $('btn-next').textContent = p.ultimo ? 'Enviar solicitud ✓' : 'Siguiente ›';
+  actualizarSiguiente();
+  const h = cont.querySelector('h1');
+  if (h) { h.setAttribute('tabindex', '-1'); h.focus({preventScroll:true}); }
+  window.scrollTo(0, 0);
+  guardar();
+}
+function actualizarSiguiente() {
+  const p = PASOS[paso];
+  $('btn-next').disabled = !!procesando;
+}
+
+// ── Utilidades de pintado ──
+function opciones(lista, {multi = false, valor, clase = '', alPulsar}) {
+  const div = document.createElement('div');
+  div.className = 'opts ' + clase;
+  div.setAttribute('role', 'group');
+  lista.forEach(([v, em, t, sub]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'opt' + (em ? '' : ' center');
+    const on = multi ? (valor || []).includes(v) : valor === v;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.innerHTML = `${em ? `<span class="em" aria-hidden="true">${em}</span>` : ''}<span>${esc(t)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
+    b.onclick = () => alPulsar(v, b);
+    div.appendChild(b);
+  });
+  return div;
+}
+function titulo(cont, t, ayuda) {
+  cont.insertAdjacentHTML('beforeend', `<h1>${esc(t)}</h1>${ayuda ? `<p class="help">${esc(ayuda)}</p>` : ''}`);
+}
+const avanzarLuego = () => setTimeout(siguiente, 280);
+
+// ── Pantallas ──
+function rInicio(cont) {
+  const empezado = S.servicios.length || S.origen.poblacion || S.nombre;
+  cont.innerHTML = `
+    <div class="hero">
+      <h1>Pide tu presupuesto de mudanza</h1>
+      <p class="help" style="margin:0">Contesta unas preguntas pulsando botones. Es gratis y tardas unos 2 minutos.</p>
+      <ul class="ticks">
+        <li>Te contestamos por WhatsApp en el día</li>
+        <li>Precio cerrado, sin sorpresas</li>
+        <li>Casi todo es opcional: rellena lo que sepas</li>
+      </ul>
+      <button class="btn btn-main btn-block" id="go" type="button">${empezado ? 'Seguir donde lo dejé ›' : 'Empezar ›'}</button>
+      ${empezado ? '<button class="btn btn-ghost btn-block" id="reset" type="button">Empezar de nuevo</button>' : ''}
+      <a class="btn btn-wa btn-block" href="${waLink(WA_TXT)}" target="_blank" rel="noopener">💬 Prefiero escribir por WhatsApp</a>
+    </div>
+    <p class="slogan">«Cambia de casa, no de humor»</p>`;
+  $('go').onclick = () => siguiente();
+  if ($('reset')) $('reset').onclick = () => {
+    S = {servicios:[], origen:{}, destino:{}, destinoNoSe:false, cuando:'', fecha:'', flexible:false, fotosWhatsapp:false, nombre:'', telefono:'', comentario:''};
+    fotos = []; guardar(); siguiente();
+  };
+}
+
+function rServicios(cont) {
+  titulo(cont, '¿Qué necesitas?', 'Puedes marcar varias cosas.');
+  cont.appendChild(opciones(SERV, {multi:true, valor:S.servicios, alPulsar:(v, b) => {
+    const i = S.servicios.indexOf(v);
+    i >= 0 ? S.servicios.splice(i, 1) : S.servicios.push(v);
+    b.setAttribute('aria-pressed', i >= 0 ? 'false' : 'true'); guardar();
+  }}));
+}
+
+function rLugar(k, t, ayuda) {
+  titulo(cont0(), t, ayuda);
+  const d = S[k], cont = $('step');
+  cont.insertAdjacentHTML('beforeend', `
+    <div class="field"><label for="f-pob">Pueblo o ciudad</label>
+      <input id="f-pob" list="towns" autocomplete="address-level2" placeholder="Ej.: Huelva" value="${esc(d.poblacion || '')}" /></div>
+    <div class="field"><label for="f-calle">Calle y número <small>(opcional)</small></label>
+      <input id="f-calle" autocomplete="street-address" placeholder="Ej.: Av. Andalucía 12" value="${esc(d.calle || '')}" /></div>
+    <datalist id="towns">${TOWNS.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`);
+  $('f-pob').oninput = e => { d.poblacion = e.target.value; if (k === 'destino' && e.target.value) { S.destinoNoSe = false; marcarNoSe(); } guardar(); };
+  $('f-calle').oninput = e => { d.calle = e.target.value; guardar(); };
+  if (k === 'destino') {
+    const b = opciones([['nose', '🤷', 'Aún no lo sé', 'Te preguntamos más adelante']], {valor: S.destinoNoSe ? 'nose' : '', alPulsar: () => {
+      S.destinoNoSe = !S.destinoNoSe; marcarNoSe(); guardar(); if (S.destinoNoSe) avanzarLuego();
+    }});
+    b.style.marginTop = '4px'; b.id = 'nose-box'; cont.appendChild(b);
+  }
+  function marcarNoSe() { const x = document.querySelector('#nose-box .opt'); if (x) x.setAttribute('aria-pressed', S.destinoNoSe ? 'true' : 'false'); }
+}
+function cont0() { return $('step'); }
+
+function rPiso(k, t) {
+  const cont = $('step'), d = S[k];
+  titulo(cont, t, 'Pulsa una opción. Si no lo sabes, sigue adelante.');
+  cont.insertAdjacentHTML('beforeend', '<h2>¿Qué piso es?</h2>');
+  cont.appendChild(opciones(PISOS.map(([v, l]) => [v, '', l]), {valor:d.piso, clase:'three', alPulsar:v => {
+    d.piso = d.piso === v ? '' : v; if (d.piso === 'bajo') d.ascensor = d.ascensor || ''; guardar(); pintarSinFoco();
+    if (d.piso === 'bajo') avanzarLuego();
+  }}));
+  if (d.piso !== 'bajo') {
+    cont.insertAdjacentHTML('beforeend', '<h2>¿Hay ascensor?</h2>');
+    cont.appendChild(opciones(ASC.map(([v, l]) => [v, '', l]), {valor:d.ascensor, clase:'three', alPulsar:v => {
+      d.ascensor = d.ascensor === v ? '' : v; guardar(); pintarSinFoco();
+      if (d.ascensor && d.piso) avanzarLuego();
+    }}));
+  }
+}
+function pintarSinFoco() {    // repinta la pantalla actual sin mover el foco ni el scroll
+  const y = window.scrollY; const cont = $('step'); cont.innerHTML = ''; PASOS[paso].render(cont); window.scrollTo(0, y); actualizarSiguiente();
+}
+
+function rCamion(k, t) {
+  const cont = $('step'), d = S[k];
+  titulo(cont, t, 'Nos ayuda a saber cuánto hay que andar con los muebles.');
+  cont.appendChild(opciones(PARK, {valor:d.aparcamiento, alPulsar:v => {
+    d.aparcamiento = d.aparcamiento === v ? '' : v; guardar(); pintarSinFoco(); if (d.aparcamiento) avanzarLuego();
+  }}));
+}
+
+function rCuando(cont) {
+  const hoy = new Date(); const min = new Date(hoy.getTime() - hoy.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  titulo(cont, '¿Para cuándo es?', 'Una fecha aproximada nos vale.');
+  cont.appendChild(opciones([['pronto', '⚡', 'Lo antes posible'], ['nosabe', '🗓️', 'Aún no lo sé']], {valor:S.fecha ? '' : S.cuando, clase:'two', alPulsar:v => {
+    S.cuando = S.cuando === v ? '' : v; if (S.cuando) S.fecha = ''; guardar(); pintarSinFoco(); if (S.cuando) avanzarLuego();
+  }}));
+  cont.insertAdjacentHTML('beforeend', `
+    <h2>O elige un día</h2>
+    <div class="field"><label for="f-fecha" class="sr">Fecha</label><input id="f-fecha" type="date" min="${min}" value="${esc(S.fecha)}" /></div>`);
+  $('f-fecha').onchange = e => { S.fecha = e.target.value; if (S.fecha) S.cuando = ''; guardar(); pintarSinFoco(); };
+  if (S.fecha) cont.appendChild(opciones([['flex', '🤝', 'Puedo cambiar el día si hace falta']], {valor:S.flexible ? 'flex' : '', alPulsar:(v, b) => {
+    S.flexible = !S.flexible; b.setAttribute('aria-pressed', S.flexible ? 'true' : 'false'); guardar();
+  }}));
+}
+
+function rFotos(cont) {
+  titulo(cont, 'Haz fotos de lo que hay que llevar', 'Una foto de cada habitación y de los muebles grandes. Con eso te damos un precio cerrado.');
+  cont.insertAdjacentHTML('beforeend', `
+    <div class="photo-btns">
+      <button class="opt photo-btn" id="b-cam" type="button"><span class="em" aria-hidden="true">📷</span><span>Hacer fotos</span></button>
+      <button class="opt photo-btn" id="b-gal" type="button"><span class="em" aria-hidden="true">🖼️</span><span>Elegir de la galería</span></button>
+    </div>
+    <div id="fotos-estado"></div>
+    <div class="thumbs" id="thumbs"></div>`);
+  $('b-cam').onclick = () => $('in-camera').click();
+  $('b-gal').onclick = () => $('in-gallery').click();
+  const w = opciones([['wa', '💬', 'Prefiero mandarlas por WhatsApp', 'Las pides cuando te contestemos']], {valor:S.fotosWhatsapp ? 'wa' : '', alPulsar:(v, b) => {
+    S.fotosWhatsapp = !S.fotosWhatsapp; b.setAttribute('aria-pressed', S.fotosWhatsapp ? 'true' : 'false'); guardar(); if (S.fotosWhatsapp && !fotos.length) avanzarLuego();
+  }});
+  w.style.marginTop = '16px'; cont.appendChild(w);
+  pintarFotos();
+}
+function pintarFotos() {
+  const th = $('thumbs'), st = $('fotos-estado'); if (!th) return;
+  th.innerHTML = fotos.map(f => `<div class="thumb"><img src="${f.data}" alt="Foto añadida" /><button type="button" data-del="${f.id}" aria-label="Quitar esta foto">✕</button></div>`).join('');
+  th.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { fotos = fotos.filter(f => f.id !== +b.dataset.del); pintarFotos(); });
+  st.innerHTML = (procesando ? `<p class="busy">Preparando ${procesando} foto${procesando > 1 ? 's' : ''}…</p>` : '') +
+    (fotos.length ? `<p class="count">✓ ${fotos.length} foto${fotos.length > 1 ? 's' : ''} lista${fotos.length > 1 ? 's' : ''}${fotos.length >= MAX_FOTOS ? ' (máximo)' : ''}</p>` : '');
+  actualizarSiguiente();
+}
+let fid = 0;
+async function anadirFotos(files) {
+  const lista = [...files].filter(f => f.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name)).slice(0, MAX_FOTOS - fotos.length);
+  if (!lista.length) { if (fotos.length >= MAX_FOTOS) alert0(`Como máximo ${MAX_FOTOS} fotos. El resto mándalas por WhatsApp.`); return; }
+  procesando += lista.length; pintarFotos();
+  for (const f of lista) {
+    try { fotos.push({id: ++fid, data: await reducir(f)}); } catch (e) { alert0('Una foto no se ha podido abrir. Prueba con otra o mándala por WhatsApp.'); }
+    procesando--; pintarFotos();
+  }
+}
+['in-camera', 'in-gallery'].forEach(id => $(id).addEventListener('change', e => { anadirFotos(e.target.files); e.target.value = ''; }));
+async function reducir(file) {
+  let img, w, h;
+  try { img = await createImageBitmap(file, {imageOrientation: 'from-image'}); w = img.width; h = img.height; }
+  catch (e) {
+    img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = URL.createObjectURL(file); });
+    w = img.naturalWidth; h = img.naturalHeight;
+  }
+  const s = Math.min(1, LADO / Math.max(w, h));
+  const c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  if (img.close) img.close();
+  return c.toDataURL('image/jpeg', CALIDAD);
+}
+function alert0(msg) {
+  const st = $('fotos-estado') || $('step');
+  st.insertAdjacentHTML('beforeend', `<p class="alert" role="alert">${esc(msg)}</p>`);
+}
+
+function datosOk(mostrar) {
+  const n = (S.nombre || '').trim(), d = (S.telefono || '').replace(/\D/g, '');
+  const errN = n.length < 2 ? 'Escribe tu nombre.' : '';
+  const errT = d.length < 9 ? 'Escribe tu teléfono (mínimo 9 números).' : '';
+  if (mostrar) { $('e-nombre').textContent = errN; $('e-tel').textContent = errT; }
+  return !errN && !errT;
+}
+function rDatos(cont) {
+  titulo(cont, '¿A quién le mandamos el presupuesto?', 'Te escribimos por WhatsApp a este número.');
+  cont.insertAdjacentHTML('beforeend', `
+    <div class="field"><label for="f-nombre">Tu nombre</label>
+      <input id="f-nombre" autocomplete="given-name" value="${esc(S.nombre)}" placeholder="Ej.: Lucía" />
+      <div class="err" id="e-nombre" role="alert"></div></div>
+    <div class="field"><label for="f-tel">Tu teléfono (WhatsApp)</label>
+      <input id="f-tel" type="tel" inputmode="tel" autocomplete="tel" value="${esc(S.telefono)}" placeholder="Ej.: 600 123 456" />
+      <div class="err" id="e-tel" role="alert"></div></div>
+    <div class="field"><label for="f-com">¿Algo más que debamos saber? <small>(opcional)</small></label>
+      <textarea id="f-com" placeholder="Ej.: un piano, un armario muy grande, una nevera americana, si hay que guardar cosas…">${esc(S.comentario)}</textarea></div>
+    <p class="privacy">Usamos tus datos solo para contestarte con el presupuesto. No los compartimos con nadie.</p>
+    <div id="envio-error"></div>`);
+  $('f-nombre').oninput = e => { S.nombre = e.target.value; guardar(); actualizarSiguiente(); };
+  $('f-tel').oninput = e => { S.telefono = e.target.value; guardar(); actualizarSiguiente(); };
+  $('f-com').oninput = e => { S.comentario = e.target.value; guardar(); };
+  ['f-nombre', 'f-tel'].forEach(id => $(id).addEventListener('blur', () => datosOk(true)));
+}
+
+function rHecho(cont) {
+  const n = esc((S.nombre || '').trim().split(' ')[0]);
+  cont.innerHTML = `
+    <div class="hero done">
+      <div class="big" aria-hidden="true">✅</div>
+      <h1>¡Recibido${n ? ', ' + n : ''}!</h1>
+      <p class="help">Te escribimos por WhatsApp al <strong>${esc(S.telefono)}</strong> con el presupuesto, normalmente en el mismo día.</p>
+      ${S.fotosWhatsapp || !fotos.length ? `<p class="help">Si tienes fotos de los muebles, mándanoslas por WhatsApp y te damos el precio antes.</p>` : ''}
+      <a class="btn btn-wa btn-block" href="${waLink(`Hola, soy ${(S.nombre || '').trim()}. Acabo de pedir presupuesto en la web 🙂`)}" target="_blank" rel="noopener">💬 Abrir WhatsApp</a>
+    </div>
+    <p class="slogan">«Cambia de casa, no de humor»</p>`;
+}
+
+// ── Envío ──
+async function enviar() {
+  if (enviando) return;
+  if (!datosOk(true)) { ($('f-nombre').value.trim().length < 2 ? $('f-nombre') : $('f-tel')).focus(); return; }
+  enviando = true;
+  $('sending-txt').textContent = fotos.length ? `Enviando tu solicitud y ${fotos.length} foto${fotos.length > 1 ? 's' : ''}…` : 'Enviando tu solicitud…';
+  $('sending').classList.add('on');
+  const lado = d => ({poblacion: d.poblacion || '', calle: d.calle || '', piso: d.piso || '', ascensor: d.ascensor || '', aparcamiento: d.aparcamiento || ''});
+  const body = {
+    web: $('hp-web').value, t: Date.now() - T0,
+    servicios: S.servicios, origen: lado(S.origen), destino: S.destinoNoSe ? {} : lado(S.destino),
+    cuando: S.cuando, fecha: S.fecha, flexible: S.flexible, fotos_whatsapp: S.fotosWhatsapp,
+    nombre: S.nombre, telefono: S.telefono, comentario: S.comentario,
+    fotos: fotos.map(f => f.data),
+  };
+  let error = '';
+  try {
+    const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 90000);
+    const r = await fetch(ENDPOINT, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), signal: ctrl.signal});
+    clearTimeout(to);
+    let j = {}; try { j = await r.json(); } catch (e) {}
+    if (!r.ok || !j.ok) error = j.error || 'No se ha podido enviar.';
+  } catch (e) { error = 'No hay conexión o ha tardado demasiado.'; }
+  $('sending').classList.remove('on'); enviando = false;
+  if (error) {
+    $('envio-error').innerHTML = `<div class="alert" role="alert">${esc(error)} Vuelve a intentarlo o escríbenos:
+      <a class="btn btn-wa btn-block" href="${waLink(WA_TXT)}" target="_blank" rel="noopener">💬 Escribir por WhatsApp</a></div>`;
+    $('envio-error').scrollIntoView({behavior: 'smooth', block: 'center'});
+    return;
+  }
+  const hecho = PASOS.findIndex(p => p.final);
+  ir(hecho, {historial: false}); history.replaceState({paso: hecho}, '', '');
+  try { localStorage.removeItem(KEY); } catch (e) {}
+}
+
+// ── Arranque ──
+$('btn-next').onclick = () => PASOS[paso].ultimo ? enviar() : siguiente();
+$('btn-back').onclick = anterior;
+$('wa-help').href = waLink(WA_TXT);
+history.replaceState({paso: 0}, '', '');
+pintar();
+})();
+</script>
+</body>
+</html>

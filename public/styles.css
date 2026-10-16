@@ -413,3 +413,11 @@
 
 /* Gasoil automático */
 .fuel-hint{font-size:.72rem;color:var(--muted);margin-top:4px;line-height:1.35}
+
+/* Formulario público en Solicitudes */
+.form-link-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px}
+.form-link-title{font-weight:800;font-size:.9rem}
+.form-link-url{font-size:.75rem;color:var(--muted);margin:3px 0 8px;word-break:break-all}
+.form-link-btns{display:flex;gap:6px;flex-wrap:wrap}
+.form-link-btns .btn{text-decoration:none}
+.web-tag{font-size:.65rem;font-weight:800;background:var(--accentSoft);color:var(--accent);border-radius:6px;padding:1px 6px;vertical-align:middle}
