@@ -5,12 +5,13 @@ Expone los trabajos de la colección 'trabajos' y sus fotos como herramientas
 MCP sobre HTTP (transporte "Streamable HTTP", modo sin estado).
 
 URL del conector (la que se pega en Claude → Ajustes → Conectores):
-  https://europe-west1-<PROYECTO>.cloudfunctions.net/mudanzapro_mcp/<MCP_KEY>
+  https://europe-west1-<PROYECTO>.cloudfunctions.net/mudanzapro_mcp
+con la cabecera de solicitud  Authorization: Bearer <MCP_KEY>
+(también se acepta X-API-Key: <MCP_KEY>, o la clave al final de la URL).
 
 La clave MCP_KEY es un secreto de Firebase:
   firebase functions:secrets:set MCP_KEY
-Cualquiera que tenga la URL completa puede LEER los trabajos, así que no la
-compartas. Para revocarla, cambia el secreto y vuelve a desplegar.
+Cualquiera que tenga la clave puede LEER los trabajos, así que no la compartas. Para revocarla, cambia el secreto y vuelve a desplegar.
 
 Por privacidad, el conector NO devuelve teléfono, email ni datos económicos.
 """
@@ -279,10 +280,23 @@ def handle_message(msg, repo_factory):
     return _err(msg_id, -32601, f"Método no soportado: {method}")
 
 
-def handle_http(method, path, body_bytes, key, repo_factory):
+def _clave_valida(key, path, headers):
+    """La clave puede ir en la cabecera Authorization: Bearer <clave>, en
+    X-API-Key, o (compatibilidad) como último tramo de la URL."""
+    if not key:
+        return False
+    auth = headers.get("Authorization", "") or ""
+    candidatos = [
+        auth[7:].strip() if auth.lower().startswith("bearer ") else "",
+        (headers.get("X-API-Key") or "").strip(),
+        path.strip("/").split("/")[-1] if path else "",
+    ]
+    return any(c and hmac.compare_digest(c.encode(), key.encode()) for c in candidatos)
+
+
+def handle_http(method, path, body_bytes, key, repo_factory, headers=None):
     """Lógica HTTP pura. Devuelve (status, body_str|None)."""
-    token = path.strip("/").split("/")[-1] if path else ""
-    if not key or not hmac.compare_digest(token.encode(), key.encode()):
+    if not _clave_valida(key, path, headers or {}):
         return 404, None  # 404 y no 401: no revelamos que aquí hay algo
     if method == "GET":
         return 405, None  # sin canal SSE: modo sin estado
@@ -319,5 +333,5 @@ def _repo_factory():
     secrets=[MCP_KEY],
 )
 def mudanzapro_mcp(req: https_fn.Request) -> https_fn.Response:
-    status, body = handle_http(req.method, req.path, req.get_data(), MCP_KEY.value, _repo_factory)
+    status, body = handle_http(req.method, req.path, req.get_data(), MCP_KEY.value, _repo_factory, req.headers)
     return https_fn.Response(body or "", status=status, mimetype="application/json")
