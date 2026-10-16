@@ -2,21 +2,32 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Logo y assets públicos (solo lectura pública, escritura autenticada)
+    // Mismos correos que en firestore.rules
+    function esEquipo() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+             'albertogmez99@gmail.com',
+             'contactomudanzasdelsur@gmail.com'
+           ];
+    }
+
+    // Logo y assets públicos (lectura pública, escritura del equipo)
     match /assets/{allPaths=**} {
       allow read:  if true;
-      allow write: if request.auth != null;
+      allow write: if esEquipo();
     }
 
-    // PDFs de presupuestos — lectura y escritura para autenticados
+    // PDFs de presupuestos
     match /presupuestos/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if esEquipo();
     }
 
-    // Fotos de trabajos
+    // Fotos de trabajos (las del formulario web las sube el servidor en trabajos/web/)
     match /trabajos/{userId}/{allPaths=**} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null
+      allow read:   if esEquipo();
+      allow delete: if esEquipo();
+      allow create, update: if esEquipo()
                    && request.auth.uid == userId
                    && request.resource.size < 10 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
@@ -24,8 +35,8 @@ service firebase.storage {
 
     // Inventario
     match /inventario/{userId}/{allPaths=**} {
-      allow read:  if request.auth != null;
-      allow write: if request.auth != null
+      allow read:  if esEquipo();
+      allow write: if esEquipo()
                    && request.auth.uid == userId
                    && request.resource.size < 10 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');

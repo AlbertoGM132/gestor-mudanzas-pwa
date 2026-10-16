@@ -13,7 +13,7 @@ Deploy:
 import os, io, json, tempfile
 from datetime import datetime
 from firebase_functions import https_fn, options
-from firebase_admin import initialize_app, storage, firestore
+from firebase_admin import initialize_app, storage, firestore, auth as fb_auth
 import google.cloud.firestore
 
 # ── ReportLab ──────────────────────────────────────────────
@@ -23,6 +23,21 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas as rl_canvas
 
 initialize_app()
+
+# Correos que pueden usar la app (los mismos que en firestore.rules y storage.rules)
+EQUIPO = {"albertogmez99@gmail.com", "contactomudanzasdelsur@gmail.com"}
+
+
+def usuario_del_equipo(req):
+    """uid si la petición trae el token de sesión de alguien del equipo; si no, None."""
+    cab = req.headers.get("Authorization", "")
+    if not cab.startswith("Bearer "):
+        return None
+    try:
+        tok = fb_auth.verify_id_token(cab[7:].strip())
+    except Exception:
+        return None
+    return tok["uid"] if (tok.get("email") or "").lower() in EQUIPO else None
 
 RED   = colors.HexColor("#C0392B")
 GRAY  = colors.HexColor("#555555")
@@ -238,10 +253,13 @@ def generar_presupuesto(req: https_fn.Request) -> https_fn.Response:
     if req.method == "OPTIONS":
         return https_fn.Response("", status=204)
 
+    uid = usuario_del_equipo(req)
+    if not uid:
+        return https_fn.Response(json.dumps({"error": "No autorizado"}), status=401, mimetype="application/json")
+
     try:
         body = req.get_json(silent=True) or {}
         data = body.get("data", {})
-        uid  = body.get("uid", "anonimo")
         guardar = body.get("guardar", True)
 
         if not data:

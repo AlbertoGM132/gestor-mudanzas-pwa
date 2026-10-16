@@ -1708,9 +1708,10 @@ async function generarPresupuestoPDF(){
   btn.disabled = true;
 
   try {
+    const idToken = await auth.currentUser.getIdToken();
     const res = await fetch(CLOUD_FUNCTION_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
       body: JSON.stringify({
         data,
         uid: auth.currentUser.uid,
