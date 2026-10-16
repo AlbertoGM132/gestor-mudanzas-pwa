@@ -96,7 +96,8 @@ def _estimacion(a):
         mat[m] = float(q or 0)
     return {"vehicles": vehs, "hours": float(a.get("horas") or 0), "workers": int(a.get("trabajadores") or 0),
             "partners": int(a.get("socios") or 0), "matQty": mat,
-            "fuel": _gasoil_manual(a.get("gasoil")), "extras": float(a.get("otros") or 0)}
+            "fuel": _gasoil_manual(a.get("gasoil")), "extras": float(a.get("otros") or 0),
+            "m3": float(a.get("volumen_m3") or 0) or ""}
 
 
 def _acceso(d):
@@ -174,6 +175,7 @@ ESTIMACION = {
     "material": {"type": "object", "description": f"Unidades de material que se gasta. Claves: {', '.join(CONSUMIBLES)}."},
     "gasoil": {"type": "number", "description": "Solo si se quiere fijar a mano. Si se omite, se calcula con los km de cada vehículo × su consumo × precio del gasoil (tarifas)."},
     "otros": {"type": "number", "description": "Peajes, parking, etc."},
+    "volumen_m3": {"type": "number", "description": "Volumen aproximado en m³ (sale en el mensaje de WhatsApp del presupuesto)."},
 }
 DATOS = {
     "cliente": {"type": "string"}, "telefono": {"type": "string"}, "poblacion": {"type": "string"},

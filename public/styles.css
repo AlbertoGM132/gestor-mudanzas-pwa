@@ -421,3 +421,13 @@
 .form-link-btns{display:flex;gap:6px;flex-wrap:wrap}
 .form-link-btns .btn{text-decoration:none}
 .web-tag{font-size:.65rem;font-weight:800;background:var(--accentSoft);color:var(--accent);border-radius:6px;padding:1px 6px;vertical-align:middle}
+
+/* Presupuesto dentro de la solicitud */
+.quote-box{border:1px solid var(--accent);background:linear-gradient(180deg,var(--accentSoft),transparent 70%)}
+.quote-summary{display:grid;gap:4px;margin:4px 0 10px}
+.quote-line{font-size:.82rem;line-height:1.35}
+.quote-price{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0 4px}
+.quote-price span{color:var(--muted);font-size:.85rem}
+.quote-price strong{font-size:1.6rem;color:var(--accent);font-weight:900}
+.quote-msg{white-space:pre-wrap;font-size:.8rem;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:10px;margin:10px 0;line-height:1.4}
+.btn-wa-big{display:block;text-align:center;background:#1f9d55;color:#fff;font-weight:800;border-radius:12px;padding:13px;text-decoration:none;font-size:.95rem}
