@@ -557,8 +557,13 @@ function clientSummary(j){
   const lado=(icon,addr,floor,el,acc)=>{const t=[addr,PISO_ASC(floor,el),accessLabel(acc)].filter(Boolean).join(' · ');return t?`${icon} ${t}`:'';};
   const fecha=j.date?`📅 ${fmtDateEs(j.date)}`:j.desiredDate?`📅 Le viene bien: ${fmtDateEs(j.desiredDate)}`
     :j.desiredWhen==='pronto'?'📅 Lo antes posible':j.desiredWhen==='nosabe'?'📅 Aún no sabe la fecha':'';
+  const inv=j.inventory||{};
+  const muebles=Object.entries(inv.muebles||{}).map(([k,n])=>`${n} ${k}`).join(', ');
   return [
     (j.services||[]).length?`📦 ${j.services.join(', ')}`:'',
+    inv.casa||muebles?`🏠 ${[inv.casa,muebles].filter(Boolean).join(' · ')}`:'',
+    inv.desmontaje||inv.embalaje?`🔧 ${[inv.desmontaje&&`Desmontaje: ${inv.desmontaje}`,inv.embalaje&&`Embalaje: ${inv.embalaje}`,inv.cajas&&`cajas: ${inv.cajas}`].filter(Boolean).join(' · ')}`:'',
+    (inv.especiales||[]).length?`⚠️ ${inv.especiales.join(', ')}`:'',
     lado('📍',j.originAddress,j.originFloor,elev(j,'originElevator'),j.originAccess),
     lado('🏠',j.destinAddress,j.destinFloor,elev(j,'destinElevator'),j.destinAccess),
     fecha,

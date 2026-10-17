@@ -43,7 +43,7 @@ CAMPOS_PUBLICOS = [
     "destinAddress", "destinFloor", "destinElevator",
     "vehicles", "crew", "vehicle", "team", "materials", "notes",
     "stage", "originAccess", "destinAccess", "price",
-    "desiredDate", "desiredWhen", "source",
+    "desiredDate", "desiredWhen", "source", "inventory",
 ]
 VEHICULOS = {"crafter": "Furgoneta VW Crafter", "iveco": "Camión Iveco Daily 20 m³"}
 MAX_DIAS = 31
