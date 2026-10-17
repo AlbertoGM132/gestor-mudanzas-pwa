@@ -234,7 +234,8 @@ def _get_editable(repo, doc_id):
 
 
 def tool_leer_tarifas(repo, args):
-    return _tarifas(repo)
+    # Sin metadatos de guardado (updatedAt…) ni la plantilla larga del mensaje
+    return {k: v for k, v in _tarifas(repo).items() if k not in ("updatedAt", "createdAt", "quoteMsg")}
 
 
 def tool_calcular(repo, args):
