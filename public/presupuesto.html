@@ -54,6 +54,17 @@
   .opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accentSoft);box-shadow:inset 0 0 0 1px var(--accent)}
   .opt[aria-pressed="true"]::after{content:"✓";margin-left:auto;color:var(--accent);font-weight:900;font-size:1.3rem}
   .opt.center[aria-pressed="true"]::after{margin-left:6px}
+  .opts.two .opt{min-height:72px}
+
+  /* Contadores de muebles */
+  .counters{display:grid;gap:8px}
+  .counter{display:flex;align-items:center;gap:10px;background:var(--card);border:2px solid var(--line);border-radius:var(--radius);padding:8px 10px}
+  .counter.on{border-color:var(--accent);background:var(--accentSoft)}
+  .counter .em{font-size:1.4rem;width:30px;text-align:center;flex:none}
+  .ct-label{flex:1;font-weight:800;font-size:1rem;line-height:1.2}
+  .ct-btn{width:48px;height:48px;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:1.5rem;font-weight:900;color:var(--ink);flex:none}
+  .ct-btn:disabled{opacity:.35}
+  .ct-n{min-width:28px;text-align:center;font-weight:900;font-size:1.2rem}
 
   /* Campos */
   .field{margin-bottom:16px}
@@ -159,8 +170,10 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── Estado (se guarda en el móvil por si cierra la página; las fotos no) ──
-let S = {servicios:[], origen:{}, destino:{}, destinoNoSe:false, cuando:'', fecha:'', flexible:false,
-         fotosWhatsapp:false, nombre:'', telefono:'', comentario:''};
+const S0 = () => ({servicios:[], casa:'', muebles:{}, desmontaje:'', embalaje:'', cajas:'', especiales:[],
+         origen:{}, destino:{}, destinoNoSe:false, cuando:'', fecha:'', flexible:false,
+         fotosWhatsapp:false, nombre:'', telefono:'', comentario:''});
+let S = S0();
 let fotos = [];          // [{id, data}]  data = dataURL JPEG ya reducido
 let paso = 0, enviando = false, procesando = 0;
 try { const g = JSON.parse(localStorage.getItem(KEY) || 'null'); if (g && g.S) { S = {...S, ...g.S}; } } catch (e) {}
@@ -178,6 +191,15 @@ const SERV = [
   ['fragil','🍽️','Vajilla y cosas frágiles','Cristal, espejos, cuadros…'],
   ['otro','✏️','Otra cosa','Nos lo cuentas al final'],
 ];
+const CASAS = [['estudio','🛏️','Estudio'],['1','🏠','1 dormitorio'],['2','🏠','2 dormitorios'],['3','🏡','3 dormitorios'],['4','🏡','4 o más dormitorios'],['chalet','🏘️','Chalet o casa grande']];
+const MUEBLES = [['camas','🛏️','Camas'],['canapes','🛏️','Canapés (camas con arcón)'],['armario2','🚪','Armarios de 2 puertas'],['armario4','🚪','Armarios de 4 puertas'],
+  ['armario6','🚪','Armarios de 6 puertas o esquineros'],['sofas','🛋️','Sofás'],['frigorifico','🧊','Frigoríficos'],['lavadora','🧺','Lavadoras o secadoras'],
+  ['mesas','🍽️','Mesas'],['comodas','🗄️','Cómodas, aparadores o estanterías']];
+const DESMONTAJE = [['si','🔧','Sí, desmontadlos y montadlos vosotros'],['desmontar','🪛','Solo desmontar'],['no','✅','No hace falta','Van montados o ya los desmonto yo'],['nose','🤷','No lo sé']];
+const EMBALAJE = [['todo','📦','Embaláis vosotros todo','Cajas, ropa, vajilla…'],['fragil','🍽️','Solo lo frágil','Vajilla, cristal, cuadros…'],['yo','🙋','Lo embalo yo']];
+const CAJAS = [['10','','Menos de 10'],['30','','10 a 30'],['60','','30 a 60'],['mas','','Más de 60'],['nose','','No lo sé']];
+const ESPECIALES = [['piano','🎹','Piano'],['caja-fuerte','🔒','Caja fuerte'],['nevera-americana','🧊','Nevera americana'],['pesado','🏋️','Algo de más de 100 kg'],
+  ['plantas','🪴','Plantas grandes'],['arte','🖼️','Cuadros u obras de arte'],['nada','👍','Nada de esto']];
 const PISOS = [['bajo','Bajo o casa'],['1','1º'],['2','2º'],['3','3º'],['4','4º o más']];
 const ASC = [['si','Sí'],['no','No'],['nose','No lo sé']];
 const PARK = [['puerta','🚚','En la puerta','Se puede parar justo delante'],['30','👣','Muy cerca','A menos de 30 metros'],
@@ -188,6 +210,11 @@ const PARK = [['puerta','🚚','En la puerta','Se puede parar justo delante'],['
 const PASOS = [
   {id:'inicio', render: rInicio, sinBarra:true},
   {id:'servicios', render: rServicios},
+  {id:'casa', render: rCasa, saltar: () => S.servicios.length > 0 && S.servicios.every(x => x === 'porte' || x === 'otro')},
+  {id:'muebles', render: rMuebles},
+  {id:'desmontaje', render: rDesmontaje},
+  {id:'embalaje', render: rEmbalaje},
+  {id:'especiales', render: rEspeciales},
   {id:'origen', render: () => rLugar('origen', '¿Desde dónde te mudas?', 'Pueblo o ciudad. La calle solo si quieres.')},
   {id:'origen-piso', render: () => rPiso('origen', '¿Cómo es la casa de ahora?')},
   {id:'origen-camion', render: () => rCamion('origen', '¿Dónde puede parar el camión en la casa de ahora?')},
@@ -289,9 +316,53 @@ function rInicio(cont) {
     <p class="slogan">«Cambia de casa, no de humor»</p>`;
   $('go').onclick = () => siguiente();
   if ($('reset')) $('reset').onclick = () => {
-    S = {servicios:[], origen:{}, destino:{}, destinoNoSe:false, cuando:'', fecha:'', flexible:false, fotosWhatsapp:false, nombre:'', telefono:'', comentario:''};
+    S = S0();
     fotos = []; guardar(); siguiente();
   };
+}
+
+function rCasa(cont) {
+  titulo(cont, '¿Cómo de grande es la casa que dejas?', 'Más o menos. Nos ayuda a calcular el camión.');
+  cont.appendChild(opciones(CASAS, {valor:S.casa, clase:'two', alPulsar:v => { S.casa = S.casa === v ? '' : v; guardar(); pintarSinFoco(); if (S.casa) avanzarLuego(); }}));
+}
+function rMuebles(cont) {
+  titulo(cont, '¿Qué muebles grandes hay que llevar?', 'Pon cuántos hay de cada. Si no lo sabes, sigue adelante y lo vemos en las fotos.');
+  const box = document.createElement('div'); box.className = 'counters';
+  MUEBLES.forEach(([k, em, t]) => {
+    const n = S.muebles[k] || 0;
+    box.insertAdjacentHTML('beforeend', `<div class="counter${n ? ' on' : ''}"><span class="em" aria-hidden="true">${em}</span><span class="ct-label" id="lb-${k}">${esc(t)}</span>
+      <button type="button" class="ct-btn" data-k="${k}" data-d="-1" aria-label="Uno menos de ${esc(t)}" ${n ? '' : 'disabled'}>−</button>
+      <output class="ct-n" aria-labelledby="lb-${k}">${n}</output>
+      <button type="button" class="ct-btn" data-k="${k}" data-d="1" aria-label="Uno más de ${esc(t)}">+</button></div>`);
+  });
+  cont.appendChild(box);
+  box.querySelectorAll('.ct-btn').forEach(b => b.onclick = () => {
+    const k = b.dataset.k; S.muebles[k] = Math.max(0, Math.min(30, (S.muebles[k] || 0) + Number(b.dataset.d)));
+    if (!S.muebles[k]) delete S.muebles[k];
+    guardar(); pintarSinFoco();
+  });
+}
+function rDesmontaje(cont) {
+  titulo(cont, '¿Hay que desmontar y montar muebles?', 'Armarios, camas, canapés, mesas…');
+  cont.appendChild(opciones(DESMONTAJE, {valor:S.desmontaje, alPulsar:v => { S.desmontaje = S.desmontaje === v ? '' : v; guardar(); pintarSinFoco(); if (S.desmontaje) avanzarLuego(); }}));
+}
+function rEmbalaje(cont) {
+  titulo(cont, '¿Quién embala las cajas?', 'Ropa, libros, cocina, vajilla…');
+  cont.appendChild(opciones(EMBALAJE, {valor:S.embalaje, alPulsar:v => {
+    S.embalaje = S.embalaje === v ? '' : v; guardar(); pintarSinFoco(); if (S.embalaje === 'todo') avanzarLuego();
+  }}));
+  if (S.embalaje === 'yo' || S.embalaje === 'fragil') {
+    cont.insertAdjacentHTML('beforeend', `<h2>¿Cuántas cajas te salen más o menos?</h2>`);
+    cont.appendChild(opciones(CAJAS, {valor:S.cajas, clase:'two', alPulsar:v => { S.cajas = S.cajas === v ? '' : v; guardar(); pintarSinFoco(); if (S.cajas) avanzarLuego(); }}));
+  }
+}
+function rEspeciales(cont) {
+  titulo(cont, '¿Hay algo especial?', 'Cosas que necesitan más gente o cuidado. Puedes marcar varias.');
+  cont.appendChild(opciones(ESPECIALES, {multi:true, valor:S.especiales, clase:'two', alPulsar:v => {
+    if (v === 'nada') S.especiales = S.especiales.includes('nada') ? [] : ['nada'];
+    else { S.especiales = S.especiales.filter(x => x !== 'nada'); const i = S.especiales.indexOf(v); i >= 0 ? S.especiales.splice(i, 1) : S.especiales.push(v); }
+    guardar(); pintarSinFoco(); if (v === 'nada' && S.especiales.length) avanzarLuego();
+  }}));
 }
 
 function rServicios(cont) {
@@ -309,7 +380,7 @@ function rLugar(k, t, ayuda) {
   cont.insertAdjacentHTML('beforeend', `
     <div class="field"><label for="f-pob">Pueblo o ciudad</label>
       <input id="f-pob" list="towns" autocomplete="address-level2" placeholder="Ej.: Huelva" value="${esc(d.poblacion || '')}" /></div>
-    <div class="field"><label for="f-calle">Calle y número <small>(opcional)</small></label>
+    <div class="field"><label for="f-calle">Calle y número <small>(nos sirve para calcular los km)</small></label>
       <input id="f-calle" autocomplete="street-address" placeholder="Ej.: Av. Andalucía 12" value="${esc(d.calle || '')}" /></div>
     <datalist id="towns">${TOWNS.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`);
   $('f-pob').oninput = e => { d.poblacion = e.target.value; if (k === 'destino' && e.target.value) { S.destinoNoSe = false; marcarNoSe(); } guardar(); };
@@ -471,6 +542,7 @@ async function enviar() {
   const body = {
     web: $('hp-web').value, t: Date.now() - T0,
     servicios: S.servicios, origen: lado(S.origen), destino: S.destinoNoSe ? {} : lado(S.destino),
+    inventario: {casa: S.casa, muebles: S.muebles, desmontaje: S.desmontaje, embalaje: S.embalaje, cajas: S.cajas, especiales: S.especiales},
     cuando: S.cuando, fecha: S.fecha, flexible: S.flexible, fotos_whatsapp: S.fotosWhatsapp,
     nombre: S.nombre, telefono: S.telefono, comentario: S.comentario,
     fotos: fotos.map(f => f.data),

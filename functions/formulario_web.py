@@ -46,6 +46,20 @@ PISOS = {"bajo": "Bajo / casa", "1": "1º", "2": "2º", "3": "3º", "4": "4º o 
 PARKING = {"puerta", "30", "100", "mas"}
 CUANDO = {"pronto": "lo antes posible", "nosabe": "aún no lo sabe"}
 
+CASAS = {"estudio": "Estudio", "1": "1 dormitorio", "2": "2 dormitorios", "3": "3 dormitorios",
+         "4": "4 o más dormitorios", "chalet": "Chalet o casa grande"}
+MUEBLES = {"camas": ("cama", "camas"), "canapes": ("canapé", "canapés"),
+           "armario2": ("armario de 2 puertas", "armarios de 2 puertas"), "armario4": ("armario de 4 puertas", "armarios de 4 puertas"),
+           "armario6": ("armario de 6 puertas o esquinero", "armarios de 6 puertas o esquineros"), "sofas": ("sofá", "sofás"),
+           "frigorifico": ("frigorífico", "frigoríficos"), "lavadora": ("lavadora/secadora", "lavadoras/secadoras"),
+           "mesas": ("mesa", "mesas"), "comodas": ("cómoda, aparador o estantería", "cómodas, aparadores o estanterías")}
+DESMONTAJE = {"si": "desmontar y montar (lo hacemos nosotros)", "desmontar": "solo desmontar",
+              "no": "no hace falta", "nose": "no lo sabe"}
+EMBALAJE = {"todo": "lo embalamos nosotros (todo)", "fragil": "nosotros solo lo frágil", "yo": "lo embala el cliente"}
+CAJAS = {"10": "menos de 10", "30": "10 a 30", "60": "30 a 60", "mas": "más de 60", "nose": "no lo sabe"}
+ESPECIALES = {"piano": "piano", "caja-fuerte": "caja fuerte", "nevera-americana": "nevera americana",
+              "pesado": "algo de más de 100 kg", "plantas": "plantas grandes", "arte": "cuadros u obras de arte"}
+
 MSG_WHATSAPP = "Escríbenos por WhatsApp y te atendemos."
 
 
@@ -115,6 +129,37 @@ def foto_jpeg(dato):
     return out.getvalue()
 
 
+def inventario(d):
+    """Lo que el cliente marca en el formulario → (dict ordenado, líneas para las notas)."""
+    d = d if isinstance(d, dict) else {}
+    inv, lineas = {}, []
+    if d.get("casa") in CASAS:
+        inv["casa"] = CASAS[d["casa"]]
+        lineas.append(f"🏠 Casa: {inv['casa']}")
+    muebles = {}
+    for k, v in (d.get("muebles") or {}).items() if isinstance(d.get("muebles"), dict) else []:
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            continue
+        if k in MUEBLES and 0 < n <= 30:
+            muebles[k] = n
+    if muebles:
+        nombre = lambda k, n: MUEBLES[k][0 if n == 1 else 1]
+        inv["muebles"] = {nombre(k, n): n for k, n in muebles.items()}
+        lineas.append("🛋 Muebles: " + ", ".join(f"{n} {nombre(k, n)}" for k, n in muebles.items()))
+    for campo, tabla, icono, titulo in (("desmontaje", DESMONTAJE, "🔧", "Desmontaje"), ("embalaje", EMBALAJE, "📦", "Embalaje"),
+                                        ("cajas", CAJAS, "📦", "Cajas")):
+        if d.get(campo) in tabla:
+            inv[campo] = tabla[d[campo]]
+            lineas.append(f"{icono} {titulo}: {inv[campo]}")
+    esp = [ESPECIALES[x] for x in (d.get("especiales") or []) if x in ESPECIALES]
+    if esp:
+        inv["especiales"] = esp
+        lineas.append("⚠️ Especial: " + ", ".join(esp))
+    return inv, lineas
+
+
 def huella_ip(ip, dia):
     """No guardamos la IP: solo un resumen que cambia cada día."""
     return hashlib.sha256(f"mds-form|{dia}|{ip}".encode()).hexdigest()[:20]
@@ -164,7 +209,19 @@ def procesar(body, ip, repo, ahora=None):
     else:
         cuando_txt = CUANDO.get(cuando, "")
 
-    notas = []
+    inv, lineas_inv = inventario(body.get("inventario"))
+    raw_inv = body.get("inventario") if isinstance(body.get("inventario"), dict) else {}
+    # Lo que marca en desmontaje/embalaje también cuenta como servicio pedido
+    extra = []
+    if raw_inv.get("desmontaje") in ("si", "desmontar"):
+        extra.append(SERVICIOS["montaje"])
+    if raw_inv.get("embalaje") == "todo":
+        extra.append(SERVICIOS["embalaje"])
+    if raw_inv.get("embalaje") in ("todo", "fragil"):
+        extra.append(SERVICIOS["fragil"])
+    servicios += [x for x in extra if x not in servicios]
+
+    notas = list(lineas_inv)
     if comentario:
         notas.append(comentario)
     if cuando_txt:
@@ -180,6 +237,7 @@ def procesar(body, ip, repo, ahora=None):
         "destinAddress": d_dir, "destinFloor": d_piso, "destinElevator": d_asc, "destinAccess": d_acc,
         "notes": "\n".join(notas), "desiredDate": fecha,
         "desiredWhen": "" if fecha else (cuando if cuando in CUANDO else ""),
+        "inventory": inv,
         "stage": "solicitud", "date": "", "days": 1, "startTime": "08:00", "status": "pendiente",
         "crew": [], "vehicles": [], "materials": [], "photos": [], "price": "",
         "source": "web", "createdBy": "Formulario web", "updatedBy": "Formulario web",
