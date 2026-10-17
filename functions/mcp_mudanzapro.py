@@ -43,6 +43,7 @@ CAMPOS_PUBLICOS = [
     "destinAddress", "destinFloor", "destinElevator",
     "vehicles", "crew", "vehicle", "team", "materials", "notes",
     "stage", "originAccess", "destinAccess", "price",
+    "desiredDate", "desiredWhen", "source",
 ]
 VEHICULOS = {"crafter": "Furgoneta VW Crafter", "iveco": "Camión Iveco Daily 20 m³"}
 MAX_DIAS = 31
@@ -197,6 +198,9 @@ def resumen_trabajo(doc_id, data):
     est = data.get("estimate") or {}
     if isinstance(est.get("result"), dict):
         out["presupuesto_calculado"] = {k: est["result"].get(k) for k in ("cost", "price")}
+    prop = data.get("proposal") or {}
+    if isinstance(prop, dict) and prop.get("price") is not None:
+        out["propuesta_claude"] = {"precio": prop.get("price"), "fecha": prop.get("at")}
     out["etapa"] = "completado" if out["status"] == "completado" else ("programado" if data.get("date") else (data.get("stage") or "solicitud"))
     out["tiene_telefono"] = _tiene_telefono(data)
     out["faltan"] = faltan(data)
@@ -370,6 +374,7 @@ HANDLERS = {
     "crear_solicitud": _escritura(esc.tool_crear, con_hora=True),
     "actualizar_solicitud": _escritura(esc.tool_actualizar, con_hora=True),
     "guardar_presupuesto": _escritura(esc.tool_guardar_presupuesto, con_hora=True),
+    "proponer_presupuesto": _escritura(esc.tool_proponer, con_hora=True),
 }
 
 

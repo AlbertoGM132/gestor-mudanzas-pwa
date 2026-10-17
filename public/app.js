@@ -202,7 +202,8 @@ function renderSolicitudes(){
       <div class="job-card-body">
         <div class="job-card-top">
           <div class="job-client-name">${esc(j.clientName||'Sin nombre')}${j.source==='web'?' <span class="web-tag">🌐 Web</span>':''}</div>
-          ${j.price?`<div class="status-badge" style="background:var(--accentSoft);color:var(--accent)">${fmt(j.price)} €</div>`:''}
+          ${j.price?`<div class="status-badge" style="background:var(--accentSoft);color:var(--accent)">${fmt(j.price)} €</div>`
+            :j.proposal&&j.proposal.price!=null?`<div class="status-badge" style="background:var(--greenSoft);color:var(--green)">🤖 ${numEs(j.proposal.price)} €</div>`:''}
         </div>
         ${j.location||(j.services||[]).length?`<div class="job-detail-row">🏷 ${esc([j.location,(j.services||[]).join(', ')].filter(Boolean).join(' · '))}</div>`:''}
         <div class="job-time-row">${d==null?'':d===0?'Hoy':`Hace ${d} día${d>1?'s':''}`}${(j.photos||[]).length?` · 📷 ${j.photos.length}`:''}${fu?' · <strong style="color:var(--amber)">toca seguimiento</strong>':''}</div>
@@ -527,6 +528,17 @@ function renderDetailView(){
   };
   if($('btn-fill-missing'))$('btn-fill-missing').onclick=()=>editCurJob();
   cont.querySelectorAll('[data-quote-open]').forEach(b=>b.onclick=()=>openQuote());
+  if($('btn-use-proposal'))$('btn-use-proposal').onclick=async()=>{
+    const pr=curJob.proposal;
+    const data={price:String(pr.price),estimate:{...pr.estimate,result:pr.result,at:new Date().toISOString(),by:'Claude (revisado)'},
+      updatedBy:auth.currentUser.email,updatedAt:serverTimestamp()};
+    try{await setDoc(doc(db,'trabajos',curJob.id),data,{merge:true});curJob={...curJob,...data};toast(`💶 ${numEs(pr.price)} € ✓`,'ok');renderDetailView();}
+    catch(e){toast('Error: '+e.message,'err');}
+  };
+  if($('btn-adjust-proposal'))$('btn-adjust-proposal').onclick=()=>{
+    const pe=JSON.parse(JSON.stringify(curJob.proposal.estimate||{}));
+    openQuote({...pe,matQty:pe.matQty||{},vehicles:pe.vehicles||[]});
+  };
   if($('btn-quote-wa'))$('btn-quote-wa').addEventListener('click',()=>{
     // El enlace abre WhatsApp; a la vez la solicitud pasa a «Presupuesto enviado»
     if(jobStage(curJob)==='solicitud')setStage(curJob,'presupuestado').then(()=>{toast('📨 Marcado como presupuesto enviado','ok');renderDetailView();}).catch(()=>{});
@@ -559,6 +571,26 @@ function quoteSection(job){
   if(job.date)return '';                    // trabajos ya programados: el precio va en Editar
   const hasPhone=!!waPhone(job.phone);
   const lines=clientSummary(job).map(l=>`<div class="quote-line">${esc(l)}</div>`).join('');
+  const pr=job.proposal;
+  if(!price&&pr&&pr.price!=null){
+    const pe=pr.estimate||{},km=(pe.vehicles||[]).reduce((a,v)=>a+Number(v.km||0),0);
+    const datos=[Number(pe.m3)?`${numEs(pe.m3)} m³`:'',vehiculosTexto(pe.vehicles),km?`${numEs(km)} km`:'',
+      Number(pe.hours)?`${numEs(pe.hours)} h`:'',(Number(pe.workers)||0)+(Number(pe.partners)||0)?`${(Number(pe.workers)||0)+(Number(pe.partners)||0)} personas`:''].filter(Boolean).join(' · ');
+    const conf={alta:'🟢 confianza alta',media:'🟡 confianza media',baja:'🔴 faltan datos'}[pr.confidence]||'';
+    return `
+    <div class="detail-section quote-box">
+      <div class="detail-section-title">💶 Presupuesto</div>
+      <div class="quote-summary">${lines}</div>
+      <div class="proposal">
+        <div class="quote-price"><span>🤖 Propuesta de Claude</span><strong>${numEs(pr.price)} €</strong></div>
+        <div class="notes-text" style="color:var(--muted)">${esc(datos)}${conf?` · ${conf}`:''}</div>
+        ${pr.result?`<div class="notes-text" style="color:var(--muted)">Coste ${fmt(pr.result.cost)} € + ${fmt(pr.result.business)} € para el negocio${pr.result.fuel?` · gasoil ${fmt(pr.result.fuel)} €`:''}</div>`:''}
+        ${pr.notes?`<div class="proposal-notes">${esc(pr.notes)}</div>`:''}
+        <button class="btn-complete" id="btn-use-proposal">✅ Usar esta propuesta</button>
+        <button class="btn btn-ghost btn-sm" id="btn-adjust-proposal" style="margin-top:8px">✏️ Ajustar</button>
+      </div>
+    </div>`;
+  }
   if(!price) return `
     <div class="detail-section quote-box">
       <div class="detail-section-title">💶 Presupuesto</div>
@@ -577,8 +609,9 @@ function quoteSection(job){
       <button class="btn btn-ghost btn-sm" data-quote-open style="margin-top:8px">✏️ Recalcular</button>
     </div>`;
 }
-function openQuote(){
+function openQuote(est){
   formState={...curJob};formPhotos=[...(curJob.photos||[])];
+  if(est)formState.estimate=est;
   openJobForm(true);activeTab='quote';renderTabBar();renderFormTab();
 }
 // Mensaje breve del presupuesto (formato de Alberto). Se edita en Tarifas → «Mensaje del presupuesto».

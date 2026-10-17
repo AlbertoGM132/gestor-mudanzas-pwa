@@ -442,3 +442,7 @@
 #toast.show{opacity:1;visibility:visible;transition:transform .3s cubic-bezier(.34,1.56,.64,1),opacity .2s}
 #close-box{box-shadow:0 -8px 30px rgba(29,36,51,.18)}
 .quote-price strong{color:var(--accent)}
+
+/* Propuesta de Claude dentro de la solicitud */
+.proposal{border-top:1px dashed var(--border);padding-top:10px;margin-top:4px}
+.proposal-notes{white-space:pre-wrap;font-size:.8rem;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:9px 10px;margin:8px 0;line-height:1.4}
