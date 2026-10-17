@@ -610,7 +610,9 @@ function quoteSection(job){
       <div class="quote-price"><span>Precio cerrado</span><strong>${fmt(price).replace('.00','')} €</strong></div>
       ${r?`<div class="notes-text" style="color:var(--muted)">Coste ${fmt(r.cost)} € + ${fmt(r.business)} € para el negocio${r.fuel?` · gasoil ${fmt(r.fuel)} €`:''}</div>`:''}
       <div class="quote-msg">${esc(msg)}</div>
-      ${hasPhone?`<a class="btn-wa-big" id="btn-quote-wa" href="${esc(waLink(job.phone,msg))}" target="_blank" rel="noopener">📤 Enviar presupuesto por WhatsApp</a>`
+      ${hasPhone?`<a class="btn-wa-big" id="btn-quote-wa" href="${esc(waLink(job.phone,msg))}" target="_blank" rel="noopener">📤 Enviar presupuesto por WhatsApp</a>
+        ${quoteDetailMessage(job)?`<div class="quote-msg">${esc(quoteDetailMessage(job))}</div>
+        <a class="btn-wa-big btn-wa-2" id="btn-quote-detail" href="${esc(waLink(job.phone,quoteDetailMessage(job)))}" target="_blank" rel="noopener">📋 Enviar el detalle (2º mensaje)</a>`:''}`
         :`<div class="notes-text" style="color:var(--danger)">Falta el teléfono del cliente para enviarlo por WhatsApp.</div>`}
       <button class="btn btn-ghost btn-sm" data-quote-open style="margin-top:8px">✏️ Recalcular</button>
     </div>`;
@@ -667,6 +669,44 @@ function quoteDate(j){
   if(m)return fmtDateLong(`${m[3]}-${m[2]}-${m[1]}`);
   return 'Por concretar';
 }
+// «Lo que hemos presupuestado»: lo que el cliente nos contó, para que vea de dónde sale el precio
+function quoteSummary(j){
+  const inv=j.inventory||{},serv=j.services||[],out=[];
+  const town=a=>String(a||'').split(',').map(x=>x.trim()).filter(Boolean).pop()||'';
+  const cap=t=>t?t[0].toUpperCase()+t.slice(1):t;
+  // Muebles: «2 canapés, armario de 4 puertas…» (sin el «1»)
+  const muebles=Object.entries(inv.muebles||{}).map(([k,n])=>Number(n)>1?`${n} ${k}`:k);
+  if(inv.otros)muebles.push(String(inv.otros).trim().replace(/^./,c=>c.toLowerCase()).replace(/[.\s]+$/,''));
+  const casa=inv.casa?(/estudio|chalet/i.test(inv.casa)?inv.casa:`Casa de ${inv.casa}`):'';
+  if(casa||muebles.length)out.push(`${casa||'Muebles'}${muebles.length?`: ${listaEs(muebles).replace(', y ',' y ')}`:''}`);
+  if(serv.includes('Desmontaje y montaje')){
+    const que=[...new Set(Object.keys(inv.muebles||{}).map(k=>/armario/i.test(k)?'armarios':/canap/i.test(k)?'canapés':/cama/i.test(k)?'camas':''))].filter(Boolean);
+    out.push(/solo desmontar/i.test(inv.desmontaje||'')?`Desmontaje de ${que.length?listaEs(que).replace(', y ',' y '):'muebles'}`
+      :`Desmontaje y montaje de ${que.length?listaEs(que).replace(', y ',' y '):'muebles'}`);
+  }
+  const emb=inv.embalaje||'';
+  if(/cliente/i.test(emb))out.push(`Embalaje: lo preparas tú${inv.cajas&&!/no lo sabe/i.test(inv.cajas)?` (${inv.cajas} cajas)`:''}`);
+  else if(/todo/i.test(emb)||serv.includes('Embalaje'))out.push('Embalaje completo por nuestra parte, con el material incluido');
+  else if(/fr[aá]gil/i.test(emb)||serv.includes('Vajilla / frágil'))out.push('Embalaje de vajilla y objetos frágiles por nuestra parte');
+  if((inv.especiales||[]).length)out.push(`Con cuidado especial: ${listaEs(inv.especiales).replace(', y ',' y ')}`);
+  const pk={puerta:'camión en la puerta','30':'camión a menos de 30 m','100':'camión a unos 30-100 m',mas:'camión a más de 100 m'};
+  const lado=(label,addr,floor,el,acc)=>{
+    const t=town(addr);if(!t)return;
+    const f=String(floor||'').replace(/\s*\/\s*casa/i,'').trim();
+    const det=[f&&f.toLowerCase(),f&&!/bajo/i.test(f)?(el===true?'con ascensor':el===false?'sin ascensor':''):'',pk[(acc||{}).parking]||''].filter(Boolean);
+    out.push(`${label} en ${cap(t)}${det.length?` (${det.join(', ')})`:''}`);
+  };
+  lado('Recogida',j.originAddress,j.originFloor,elev(j,'originElevator'),j.originAccess);
+  lado('Entrega',j.destinAddress,j.destinFloor,elev(j,'destinElevator'),j.destinAccess);
+  return out.length?`📋 *Lo que hemos presupuestado:*\n${out.map(l=>`• ${l}`).join('\n')}`:'';
+}
+// Segundo WhatsApp: el detalle, para que el cliente vea de dónde sale el precio
+function quoteDetailMessage(j){
+  const r=quoteSummary(j);if(!r)return '';
+  const e=j.estimate||{};
+  const extra=[Number(e.m3)?`${numEs(e.m3)} m³ aprox.`:'',vehiculosTexto((e.vehicles&&e.vehicles.length)?e.vehicles:jobVehicles(j))].filter(Boolean).join(' · ');
+  return `${r}${extra?`\n\n🚚 ${extra}`:''}\n\nSi falta algo o hay algún cambio, dímelo y te ajusto el presupuesto 🙂`;
+}
 function quoteMessage(j){
   const e=j.estimate||{};
   const town=a=>String(a||'').split(',').map(x=>x.trim()).filter(Boolean).pop()||'';
@@ -674,7 +714,9 @@ function quoteMessage(j){
   const personas=(Number(e.workers)||0)+(Number(e.partners)||0)||jobCrew(j).length;
   const serv=j.services||[];
   const incluye=listaEs([veh,personas?`equipo de ${personas} persona${personas>1?'s':''}`:'',
-    ...serv.map(s=>INCLUYE_SERV[s]).filter(Boolean),'carga y descarga']);
+    ...(serv.includes('Embalaje')&&serv.includes('Vajilla / frágil')
+      ?[serv.includes('Desmontaje y montaje')&&INCLUYE_SERV['Desmontaje y montaje'],'embalaje completo, incluida la vajilla y lo frágil']
+      :serv.map(s=>INCLUYE_SERV[s])).filter(Boolean),'carga y descarga']);
   const vals={
     nombre:firstName(j), saludo:saludoHora(),
     servicio:serv.includes('Mudanza completa')||!serv.length?'mudanza':serv[0].toLowerCase(),
@@ -683,7 +725,7 @@ function quoteMessage(j){
     fecha:quoteDate(j),
     m3:Number(e.m3)?numEs(e.m3):'',
     precio:numEs(Number(j.price||0)),
-    vehiculos:veh, personas:personas?String(personas):'', incluye,
+    vehiculos:veh, personas:personas?String(personas):'', incluye, resumen:quoteSummary(j),
   };
   const tpl=String(tarifas.quoteMsg||DEFAULT_QUOTE_MSG);
   return tpl.split('\n').map(line=>{
@@ -1487,7 +1529,7 @@ function renderTarifas(){
     <div class="tarifa-section">
       <div class="tarifa-section-title">💬 Mensaje del presupuesto (WhatsApp)</div>
       <div class="fi"><textarea id="t-quote-msg" rows="10" style="width:100%;font-family:inherit">${esc(tarifas.quoteMsg||DEFAULT_QUOTE_MSG)}</textarea></div>
-      <div class="notes-text" style="color:var(--muted)">Se rellena solo con: <code>{nombre}</code> <code>{saludo}</code> <code>{servicio}</code> <code>{origen}</code> <code>{destino}</code> <code>{fecha}</code> <code>{m3}</code> <code>{precio}</code> <code>{incluye}</code> <code>{vehiculos}</code> <code>{personas}</code>. Si falta un dato, su línea no sale. <button class="link-btn" id="t-quote-reset">Volver al de por defecto</button></div>
+      <div class="notes-text" style="color:var(--muted)">Se rellena solo con: <code>{nombre}</code> <code>{saludo}</code> <code>{servicio}</code> <code>{origen}</code> <code>{destino}</code> <code>{fecha}</code> <code>{m3}</code> <code>{precio}</code> <code>{incluye}</code> <code>{vehiculos}</code> <code>{personas}</code>. Si falta un dato, su línea no sale. El detalle de lo presupuestado (muebles, desmontaje, embalaje, recogida y entrega) va en un segundo mensaje con su propio botón. <button class="link-btn" id="t-quote-reset">Volver al de por defecto</button></div>
     </div>
     <div class="tarifa-section">
       <div class="tarifa-section-title">⭐ Reseñas</div>
