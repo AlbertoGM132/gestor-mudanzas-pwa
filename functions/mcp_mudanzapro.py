@@ -205,7 +205,9 @@ def resumen_trabajo(doc_id, data):
 
 
 def _texto(obj):
-    return {"type": "text", "text": json.dumps(obj, ensure_ascii=False, indent=1)}
+    # default: fechas de Firestore (y cualquier otro tipo raro) como texto, para que nunca falle
+    return {"type": "text", "text": json.dumps(obj, ensure_ascii=False, indent=1,
+                                               default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o))}
 
 
 def _reducir_imagen(raw):
