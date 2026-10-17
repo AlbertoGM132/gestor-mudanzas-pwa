@@ -200,7 +200,21 @@ def resumen_trabajo(doc_id, data):
         out["presupuesto_calculado"] = {k: est["result"].get(k) for k in ("cost", "price")}
     prop = data.get("proposal") or {}
     if isinstance(prop, dict) and prop.get("price") is not None:
-        out["propuesta_claude"] = {"precio": prop.get("price"), "fecha": prop.get("at")}
+        pe, pr = prop.get("estimate") or {}, prop.get("result") or {}
+        out["propuesta_claude"] = {
+            "precio": prop.get("price"), "fecha": prop.get("at"), "confianza": prop.get("confidence"),
+            "supuestos": prop.get("notes"), "m3": pe.get("m3") or None,
+            "vehiculos": [f"{VEHICULOS.get(v.get('type'), v.get('type'))} ({v.get('plan')} km/día, {v.get('km')} km)"
+                          for v in pe.get("vehicles") or [] if isinstance(v, dict)],
+            "horas": pe.get("hours"), "trabajadores": pe.get("workers"), "socios": pe.get("partners"),
+            "coste": pr.get("cost"), "gasoil": pr.get("fuel")}
+    # Lo que Alberto acabó poniendo (para comparar con la propuesta y afinar)
+    if "presupuesto_calculado" in out and est.get("hours") is not None:
+        out["presupuesto_calculado"].update({
+            "m3": est.get("m3") or None, "horas": est.get("hours"),
+            "trabajadores": est.get("workers"), "socios": est.get("partners"),
+            "vehiculos": [f"{VEHICULOS.get(v.get('type'), v.get('type'))} ({v.get('plan')} km/día, {v.get('km')} km)"
+                          for v in est.get("vehicles") or [] if isinstance(v, dict)]})
     out["etapa"] = "completado" if out["status"] == "completado" else ("programado" if data.get("date") else (data.get("stage") or "solicitud"))
     out["tiene_telefono"] = _tiene_telefono(data)
     out["faltan"] = faltan(data)
