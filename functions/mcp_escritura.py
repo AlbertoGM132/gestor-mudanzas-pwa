@@ -211,6 +211,13 @@ TOOLS = [
                      "hora_inicio": {"type": "string", "description": "HH:MM"}},
                      "required": ["id"], "additionalProperties": False},
      "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
+    {"name": "proponer_presupuesto", "title": "Proponer presupuesto",
+     "description": "Deja en la solicitud una PROPUESTA de presupuesto para que Alberto la revise en la app (botones «Usar propuesta» / «Ajustar»). No cambia el precio ni la etapa ni avisa al cliente. Usa 'supuestos' para explicar en 2-5 líneas qué has estimado (m³, km, horas, personas) y qué falta por confirmar.",
+     "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, **ESTIMACION,
+                     "supuestos": {"type": "string", "description": "Qué has supuesto y por qué (se le enseña a Alberto)."},
+                     "confianza": {"type": "string", "enum": ["alta", "media", "baja"], "description": "Alta: hay fotos/inventario suficientes. Baja: faltan datos clave."}},
+                     "required": ["id", "supuestos"], "additionalProperties": False},
+     "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
     {"name": "guardar_presupuesto", "title": "Guardar presupuesto",
      "description": "Calcula y guarda el presupuesto de un trabajo existente (no completado): guarda el desglose y el precio, y si no tiene fecha pasa a 'presupuestado'. 'precio_final' permite fijar un precio distinto al calculado.",
      "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, **ESTIMACION, "precio_final": {"type": "number"}},
@@ -305,6 +312,18 @@ def tool_actualizar(repo, args, now):
     data.update({"updatedBy": "Claude", "updatedAt": now})
     repo.actualizar(doc_id, data)
     return {"id": doc_id, "actualizado": sorted(k for k in data if not k.endswith("At") and k != "updatedBy")}
+
+
+def tool_proponer(repo, args, now):
+    doc_id, actual = _get_editable(repo, args.get("id"))
+    est = _estimacion(args)
+    res = calcular(est, _tarifas(repo))
+    confianza = args.get("confianza") if args.get("confianza") in ("alta", "media", "baja") else "media"
+    prop = {"estimate": est, "result": res, "price": res["price"], "notes": str(args.get("supuestos") or "").strip()[:1500],
+            "confidence": confianza, "at": datetime.utcnow().isoformat() + "Z", "by": "Claude"}
+    repo.actualizar(doc_id, {"proposal": prop, "updatedAt": now})
+    aviso = "Ya tenía precio; la propuesta queda solo como referencia." if actual.get("price") else None
+    return {"id": doc_id, "propuesta": res["price"], "calculado": res, "aviso": aviso}
 
 
 def tool_guardar_presupuesto(repo, args, now):
