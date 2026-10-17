@@ -562,6 +562,7 @@ function clientSummary(j){
   return [
     (j.services||[]).length?`📦 ${j.services.join(', ')}`:'',
     inv.casa||muebles?`🏠 ${[inv.casa,muebles].filter(Boolean).join(' · ')}`:'',
+    inv.otros?`🛋 ${inv.otros}`:'',
     inv.desmontaje||inv.embalaje?`🔧 ${[inv.desmontaje&&`Desmontaje: ${inv.desmontaje}`,inv.embalaje&&`Embalaje: ${inv.embalaje}`,inv.cajas&&`cajas: ${inv.cajas}`].filter(Boolean).join(' · ')}`:'',
     (inv.especiales||[]).length?`⚠️ ${inv.especiales.join(', ')}`:'',
     lado('📍',j.originAddress,j.originFloor,elev(j,'originElevator'),j.originAccess),

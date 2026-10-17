@@ -170,7 +170,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── Estado (se guarda en el móvil por si cierra la página; las fotos no) ──
-const S0 = () => ({servicios:[], casa:'', muebles:{}, desmontaje:'', embalaje:'', cajas:'', especiales:[],
+const S0 = () => ({servicios:[], casa:'', muebles:{}, mueblesTexto:'', desmontaje:'', embalaje:'', cajas:'', especiales:[],
          origen:{}, destino:{}, destinoNoSe:false, cuando:'', fecha:'', flexible:false,
          fotosWhatsapp:false, nombre:'', telefono:'', comentario:''});
 let S = S0();
@@ -326,7 +326,7 @@ function rCasa(cont) {
   cont.appendChild(opciones(CASAS, {valor:S.casa, clase:'two', alPulsar:v => { S.casa = S.casa === v ? '' : v; guardar(); pintarSinFoco(); if (S.casa) avanzarLuego(); }}));
 }
 function rMuebles(cont) {
-  titulo(cont, '¿Qué muebles grandes hay que llevar?', 'Pon cuántos hay de cada. Si no lo sabes, sigue adelante y lo vemos en las fotos.');
+  titulo(cont, '¿Qué muebles grandes hay que llevar?', 'Pon cuántos hay de cada. Si tienes otros o no encajan, descríbelos abajo. Si no lo sabes, sigue adelante y lo vemos en las fotos.');
   const box = document.createElement('div'); box.className = 'counters';
   MUEBLES.forEach(([k, em, t]) => {
     const n = S.muebles[k] || 0;
@@ -336,6 +336,10 @@ function rMuebles(cont) {
       <button type="button" class="ct-btn" data-k="${k}" data-d="1" aria-label="Uno más de ${esc(t)}">+</button></div>`);
   });
   cont.appendChild(box);
+  cont.insertAdjacentHTML('beforeend', `
+    <div class="field" style="margin-top:16px"><label for="f-muebles">¿Algo más? Descríbelo a tu manera <small>(opcional)</small></label>
+      <textarea id="f-muebles" placeholder="Ej.: armario empotrado de 3 puertas, mueble de salón de 3 metros, litera, escritorio en L, vitrina de cristal…">${esc(S.mueblesTexto)}</textarea></div>`);
+  $('f-muebles').oninput = e => { S.mueblesTexto = e.target.value; guardar(); };
   box.querySelectorAll('.ct-btn').forEach(b => b.onclick = () => {
     const k = b.dataset.k; S.muebles[k] = Math.max(0, Math.min(30, (S.muebles[k] || 0) + Number(b.dataset.d)));
     if (!S.muebles[k]) delete S.muebles[k];
@@ -542,7 +546,7 @@ async function enviar() {
   const body = {
     web: $('hp-web').value, t: Date.now() - T0,
     servicios: S.servicios, origen: lado(S.origen), destino: S.destinoNoSe ? {} : lado(S.destino),
-    inventario: {casa: S.casa, muebles: S.muebles, desmontaje: S.desmontaje, embalaje: S.embalaje, cajas: S.cajas, especiales: S.especiales},
+    inventario: {casa: S.casa, muebles: S.muebles, otros: S.mueblesTexto, desmontaje: S.desmontaje, embalaje: S.embalaje, cajas: S.cajas, especiales: S.especiales},
     cuando: S.cuando, fecha: S.fecha, flexible: S.flexible, fotos_whatsapp: S.fotosWhatsapp,
     nombre: S.nombre, telefono: S.telefono, comentario: S.comentario,
     fotos: fotos.map(f => f.data),

@@ -148,6 +148,10 @@ def inventario(d):
         nombre = lambda k, n: MUEBLES[k][0 if n == 1 else 1]
         inv["muebles"] = {nombre(k, n): n for k, n in muebles.items()}
         lineas.append("🛋 Muebles: " + ", ".join(f"{n} {nombre(k, n)}" for k, n in muebles.items()))
+    otros = _txt(d.get("otros"), 800)
+    if otros:
+        inv["otros"] = otros
+        lineas.append(f"🛋 Otros muebles: {otros}")
     for campo, tabla, icono, titulo in (("desmontaje", DESMONTAJE, "🔧", "Desmontaje"), ("embalaje", EMBALAJE, "📦", "Embalaje"),
                                         ("cajas", CAJAS, "📦", "Cajas")):
         if d.get(campo) in tabla:
