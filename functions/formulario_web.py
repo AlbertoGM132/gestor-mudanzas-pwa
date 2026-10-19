@@ -164,6 +164,41 @@ def inventario(d):
     return inv, lineas
 
 
+SERV_CLAVES = {v: k for k, v in SERVICIOS.items()}
+
+
+def calculadora(body, servicios, inv, raw_inv, repo):
+    """Si la solicitud viene de la calculadora: horquilla orientativa con las tarifas reales."""
+    c = body.get("calculadora")
+    if not isinstance(c, dict):
+        return None
+    from estimador import estimar
+    from mcp_escritura import DEFAULT_TARIFAS
+    try:
+        tarifas = {**DEFAULT_TARIFAS, **(repo.tarifas() or {})}
+    except Exception:  # noqa: BLE001
+        tarifas = dict(DEFAULT_TARIFAS)
+    km = c.get("km") if isinstance(c.get("km"), dict) else {}
+    lado = lambda d: {k: (d or {}).get(k) for k in ("piso", "ascensor", "aparcamiento")}
+    datos = {"servicios": [SERV_CLAVES.get(s) for s in servicios], "inventario": raw_inv, "m3": c.get("m3"),
+             "m3_fuente": "estimado por la IA con las fotos" if c.get("m3_ia") else "indicado por el cliente",
+             "origen": lado(body.get("origen")), "destino": lado(body.get("destino")), "km": km}
+    r = estimar(datos, tarifas)
+    res = r["resumen"]
+    notas = []
+    ia = c.get("analisis_ia") if isinstance(c.get("analisis_ia"), dict) else None
+    if ia and (ia.get("m3") or ia.get("muebles")):
+        notas.append(f"🤖 La IA vio en las fotos: {ia.get('m3') or '—'} m³" + (f" · {ia.get('observaciones')}" if ia.get("observaciones") else ""))
+    notas.append(f"📏 {res['m3']} m³ ({res['fuente_m3']}) · {res['vehiculos']} · {res['km']} km · {res['horas']} h · {res['personas']} personas")
+    notas.append(f"💶 La web le mostró: {r['min']}–{r['max']} € (orientativo; el cálculo daba {r['precio']} €)")
+    campos = {"webEstimate": {"min": r["min"], "max": r["max"], "price": r["precio"], "summary": res,
+                              "estimate": r["estimacion"], "result": r["resultado"], "km": km,
+                              "at": datetime.now(timezone.utc).isoformat()},
+              "channel": "calculadora"}
+    return {"notas": notas, "campos": campos,
+            "horquilla": {"min": r["min"], "max": r["max"], "resumen": res}}
+
+
 def huella_ip(ip, dia):
     """No guardamos la IP: solo un resumen que cambia cada día."""
     return hashlib.sha256(f"mds-form|{dia}|{ip}".encode()).hexdigest()[:20]
@@ -226,13 +261,16 @@ def procesar(body, ip, repo, ahora=None):
     servicios += [x for x in extra if x not in servicios]
 
     notas = list(lineas_inv)
+    calc = calculadora(body, servicios, inv, raw_inv, repo)
+    if calc:
+        notas += calc["notas"]
     if comentario:
         notas.append(comentario)
     if cuando_txt:
         notas.append(f"📅 Fecha que le viene bien: {cuando_txt}")
     if body.get("fotos_whatsapp"):
         notas.append("📷 Dice que mandará las fotos por WhatsApp")
-    notas.append("🌐 Llegó por el formulario web")
+    notas.append("🧮 Llegó por la calculadora de la web" if calc else "🌐 Llegó por el formulario web")
 
     data = {
         "clientName": nombre, "phone": tel, "email": _txt(body.get("email"), 120),
@@ -246,6 +284,8 @@ def procesar(body, ip, repo, ahora=None):
         "crew": [], "vehicles": [], "materials": [], "photos": [], "price": "",
         "source": "web", "createdBy": "Formulario web", "updatedBy": "Formulario web",
     }
+    if calc:
+        data.update(calc["campos"])
 
     # 5) Fotos: las que fallen se saltan, no tiramos la solicitud por una foto
     sello = ahora.strftime("%Y%m%d_%H%M%S")
@@ -269,7 +309,10 @@ def procesar(body, ip, repo, ahora=None):
         repo.avisar("📥 Nueva solicitud", f"{nombre}{lugar}{qué} · {len(data['photos'])} fotos")
     except Exception:
         pass
-    return {"ok": True, "id": doc_id, "fotos": len(data["photos"]), "fotos_fallidas": fallidas}
+    out = {"ok": True, "id": doc_id, "fotos": len(data["photos"]), "fotos_fallidas": fallidas}
+    if calc:
+        out["horquilla"] = calc["horquilla"]
+    return out
 
 
 # ── Firebase ────────────────────────────────────────────────
@@ -302,6 +345,10 @@ class FirebaseFormRepo:
 
         return tx(db.transaction())
 
+    def tarifas(self):
+        snap = self._db.collection("config").document("tarifas").get()
+        return snap.to_dict() if snap.exists else {}
+
     def subir_foto(self, ruta, jpeg):
         token = str(uuid.uuid4())
         blob = self._bucket.blob(ruta)
@@ -333,6 +380,18 @@ def _json(obj, status=200):
 
 
 def handle(req, repo_factory=FirebaseFormRepo):
+    from web_cors import cors_headers
+    cab = cors_headers(req.headers.get("Origin", ""))
+    if req.method == "OPTIONS":
+        from firebase_functions import https_fn
+        return https_fn.Response("", status=204 if cab else 403, headers=cab)
+    r = _handle(req, repo_factory)
+    for k, v in cab.items():
+        r.headers[k] = v
+    return r
+
+
+def _handle(req, repo_factory):
     if req.method != "POST":
         return _json({"ok": False, "error": "Usa el formulario."}, 405)
     if (req.content_length or 0) > MAX_BODY_BYTES:

@@ -33,6 +33,13 @@
         }
       },
       {
+        "source": "/api/ia/**",
+        "function": {
+          "functionId": "web_ia",
+          "region": "europe-west1"
+        }
+      },
+      {
         "source": "/presupuesto",
         "destination": "/presupuesto.html"
       },

@@ -342,3 +342,6 @@ from mcp_mudanzapro import mudanzapro_mcp  # noqa: E402,F401
 
 # ── Formulario público «Pide tu presupuesto» (/presupuesto) ──
 from formulario_web import solicitud_publica  # noqa: E402,F401
+
+# ── IA de la web mudanzasdelsur.es (asistente, fotos, ruta) ──
+from web_ia import web_ia  # noqa: E402,F401
