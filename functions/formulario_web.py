@@ -169,8 +169,13 @@ def huella_ip(ip, dia):
     return hashlib.sha256(f"mds-form|{dia}|{ip}".encode()).hexdigest()[:20]
 
 
-def procesar(body, ip, repo, ahora=None):
-    """Valida y guarda una solicitud del formulario. Devuelve {'ok': True, ...}."""
+def procesar(body, ip, repo, ahora=None, extra=None):
+    """Valida y guarda una solicitud del formulario. Devuelve {'ok': True, ...}.
+
+    `extra` (lo usa la calculadora de la web): {"notas": [...], "origen_txt": "...",
+    "createdBy": "...", "data": {...campos añadidos a la solicitud}}.
+    """
+    extra = extra or {}
     ahora = ahora or datetime.now(timezone.utc)
     if not isinstance(body, dict):
         raise FormError(400, "No se ha podido leer el formulario. " + MSG_WHATSAPP)
@@ -216,14 +221,14 @@ def procesar(body, ip, repo, ahora=None):
     inv, lineas_inv = inventario(body.get("inventario"))
     raw_inv = body.get("inventario") if isinstance(body.get("inventario"), dict) else {}
     # Lo que marca en desmontaje/embalaje también cuenta como servicio pedido
-    extra = []
+    deducidos = []
     if raw_inv.get("desmontaje") in ("si", "desmontar"):
-        extra.append(SERVICIOS["montaje"])
+        deducidos.append(SERVICIOS["montaje"])
     if raw_inv.get("embalaje") == "todo":
-        extra.append(SERVICIOS["embalaje"])
+        deducidos.append(SERVICIOS["embalaje"])
     if raw_inv.get("embalaje") in ("todo", "fragil"):
-        extra.append(SERVICIOS["fragil"])
-    servicios += [x for x in extra if x not in servicios]
+        deducidos.append(SERVICIOS["fragil"])
+    servicios += [x for x in deducidos if x not in servicios]
 
     notas = list(lineas_inv)
     if comentario:
@@ -232,7 +237,8 @@ def procesar(body, ip, repo, ahora=None):
         notas.append(f"📅 Fecha que le viene bien: {cuando_txt}")
     if body.get("fotos_whatsapp"):
         notas.append("📷 Dice que mandará las fotos por WhatsApp")
-    notas.append("🌐 Llegó por el formulario web")
+    notas += [str(x) for x in extra.get("notas") or []]
+    notas.append(extra.get("origen_txt") or "🌐 Llegó por el formulario web")
 
     data = {
         "clientName": nombre, "phone": tel, "email": _txt(body.get("email"), 120),
@@ -244,8 +250,10 @@ def procesar(body, ip, repo, ahora=None):
         "inventory": inv,
         "stage": "solicitud", "date": "", "days": 1, "startTime": "08:00", "status": "pendiente",
         "crew": [], "vehicles": [], "materials": [], "photos": [], "price": "",
-        "source": "web", "createdBy": "Formulario web", "updatedBy": "Formulario web",
+        "source": "web", "createdBy": extra.get("createdBy") or "Formulario web",
+        "updatedBy": extra.get("createdBy") or "Formulario web",
     }
+    data.update(extra.get("data") or {})
 
     # 5) Fotos: las que fallen se saltan, no tiramos la solicitud por una foto
     sello = ahora.strftime("%Y%m%d_%H%M%S")

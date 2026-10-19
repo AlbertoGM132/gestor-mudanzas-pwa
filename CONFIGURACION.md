@@ -95,3 +95,19 @@ service firebase.storage {
 #     2. Lea los tokens FCM de la colección 'fcm_tokens'
 #     3. Envíe la notificación con admin.messaging().sendEachForMulticast()
 #   Documentación: https://firebase.google.com/docs/functions/firestore-events
+
+## IA de la web pública (mudanzasdelsur.es)
+
+Función `web_api` (functions/web_ia.py): asistente de chat, análisis de fotos, calculadora y
+formulario de contacto de la web. Todo lo que llega se guarda como **solicitud** en la app.
+
+1. Crea la clave gratuita en https://aistudio.google.com/apikey y guárdala como secreto
+   (antes del primer deploy, si no el deploy falla):
+   `firebase functions:secrets:set GEMINI_KEY --data-file clave.txt` (y borra clave.txt).
+2. `firebase deploy --only functions,hosting`
+3. Persona y conocimientos del asistente: `functions/web_conocimiento.py`.
+   Reglas del cálculo: `functions/estimador.py` (usa las tarifas de la app).
+4. Pruebas: `python -m pytest tests`
+
+Con la clave gratuita Google puede usar lo enviado para mejorar sus modelos: para clientes
+reales conviene activar la facturación en Google AI Studio (cuesta céntimos al mes).

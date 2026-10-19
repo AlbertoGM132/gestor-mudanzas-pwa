@@ -203,7 +203,7 @@ function renderSolicitudes(){
         <div class="job-card-top">
           <div class="job-client-name">${esc(j.clientName||'Sin nombre')}${j.source==='web'?' <span class="web-tag">🌐 Web</span>':''}</div>
           ${j.price?`<div class="status-badge" style="background:var(--accentSoft);color:var(--accent)">${fmt(j.price)} €</div>`
-            :j.proposal&&j.proposal.price!=null?`<div class="status-badge" style="background:var(--greenSoft);color:var(--green)">🤖 ${numEs(j.proposal.price)} €</div>`:''}
+            :j.proposal&&j.proposal.price!=null?`<div class="status-badge" style="background:var(--greenSoft);color:var(--green)">${j.proposal.by==='Calculadora web'?'🧮':'🤖'} ${numEs(j.proposal.price)} €</div>`:''}
         </div>
         ${j.location||(j.services||[]).length?`<div class="job-detail-row">🏷 ${esc([j.location,(j.services||[]).join(', ')].filter(Boolean).join(' · '))}</div>`:''}
         <div class="job-time-row">${d==null?'':d===0?'Hoy':`Hace ${d} día${d>1?'s':''}`}${(j.photos||[]).length?` · 📷 ${j.photos.length}`:''}${fu?' · <strong style="color:var(--amber)">toca seguimiento</strong>':''}</div>
@@ -588,7 +588,7 @@ function quoteSection(job){
       <div class="detail-section-title">💶 Presupuesto</div>
       <div class="quote-summary">${lines}</div>
       <div class="proposal">
-        <div class="quote-price"><span>🤖 Propuesta de Claude</span><strong>${numEs(pr.price)} €</strong></div>
+        <div class="quote-price"><span>${pr.by==='Calculadora web'?'🧮 Calculadora de la web':'🤖 Propuesta de Claude'}</span><strong>${numEs(pr.price)} €</strong></div>
         <div class="notes-text" style="color:var(--muted)">${esc(datos)}${conf?` · ${conf}`:''}</div>
         ${pr.result?`<div class="notes-text" style="color:var(--muted)">Coste ${fmt(pr.result.cost)} € + ${fmt(pr.result.business)} € para el negocio${pr.result.fuel?` · gasoil ${fmt(pr.result.fuel)} €`:''}</div>`:''}
         ${pr.notes?`<div class="proposal-notes">${esc(pr.notes)}</div>`:''}
