@@ -134,3 +134,23 @@ def test_formulario_sigue_igual():
     repo = Repo()
     fw.procesar({"nombre": "Ana", "telefono": "600000000", "t": 9000}, "1", repo)
     assert repo.creados[0]["createdBy"] == "Formulario web" and "formulario web" in repo.creados[0]["notes"]
+
+def test_fotos_prueba_siguiente_modelo_si_json_roto():
+    llamadas = []
+    def gem(modelos, *a, **k):
+        llamadas.append(modelos[0])
+        return '{"items": [{"nombre": "sofá"' if len(llamadas) == 1 else '{"items": [{"nombre": "sofá", "categoria": "sofa", "cantidad": 1}]}'
+    r = w.fotos({"fotos": [jpeg_b64()]}, "K", gem=gem)
+    assert r["ok"] and len(llamadas) == 2 and r["items"][0]["categoria"] == "sofa"
+
+def test_gemini_guarda_motivos():
+    import urllib.error
+    motivos = []
+    def post(url, body, headers, timeout):
+        if "m1" in url: raise urllib.error.HTTPError(url, 429, "x", {}, None)
+        return {"candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": []}}]}
+    try:
+        w.gemini(["m1", "m2"], [], "K", post=post, motivos=motivos); assert False
+    except w.WebError:
+        pass
+    assert motivos[0].startswith("m1: HTTP 429") and "MAX_TOKENS" in motivos[1]

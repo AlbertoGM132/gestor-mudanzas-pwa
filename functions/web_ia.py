@@ -96,11 +96,14 @@ def _post_json(url, body, headers, timeout):
         return json.loads(r.read().decode())
 
 
-def gemini(modelos, contents, clave, system=None, config=None, timeout=40, post=_post_json):
-    """Prueba los modelos en orden. Devuelve el texto o lanza WebError(503)."""
+def gemini(modelos, contents, clave, system=None, config=None, timeout=40, post=_post_json, motivos=None):
+    """Prueba los modelos en orden. Devuelve el texto o lanza WebError(503).
+
+    `motivos` (lista) recoge por qué falló cada modelo, sin datos sensibles, para el registro.
+    """
     if not clave:
         raise WebError(503, "sin clave")
-    ultimo = None
+    motivos = motivos if motivos is not None else []
     for modelo in modelos:
         body = {"contents": contents, "safetySettings": SEGURIDAD, "generationConfig": dict(config or {})}
         if system:
@@ -108,25 +111,28 @@ def gemini(modelos, contents, clave, system=None, config=None, timeout=40, post=
         for intento in (1, 2):
             try:
                 data = post(GEMINI_URL.format(modelo), body, {"x-goog-api-key": clave}, timeout)
-                partes = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+                cand = (data.get("candidates") or [{}])[0]
+                partes = (cand.get("content") or {}).get("parts") or []
                 texto = "".join(p.get("text", "") for p in partes if not p.get("thought"))
                 if texto.strip():
                     return texto.strip()
-                ultimo = "respuesta vacía"
+                motivos.append(f"{modelo}: vacía ({cand.get('finishReason') or (data.get('promptFeedback') or {}).get('blockReason') or '?'})")
                 break
             except urllib.error.HTTPError as e:
-                ultimo = f"{modelo}: HTTP {e.code}"
+                try:
+                    detalle = json.loads(e.read().decode()).get("error", {}).get("status", "")
+                except Exception:  # noqa: BLE001
+                    detalle = ""
+                motivos.append(f"{modelo}: HTTP {e.code} {detalle}".strip())
                 # Si el modelo no acepta la config de razonamiento, se reintenta sin ella
                 if e.code == 400 and intento == 1 and "thinkingConfig" in body["generationConfig"]:
                     body["generationConfig"].pop("thinkingConfig")
                     continue
-                if e.code in (400, 401, 403) and modelo == modelos[-1]:
-                    break
                 break
             except Exception as e:  # noqa: BLE001 (timeouts, red)
-                ultimo = f"{modelo}: {e!r}"
+                motivos.append(f"{modelo}: {type(e).__name__}")
                 break
-    print("gemini fallo:", ultimo)
+    print("gemini fallo:", " | ".join(motivos))
     raise WebError(503, "ia no disponible")
 
 
@@ -223,13 +229,23 @@ def fotos(body, clave, gem=gemini, preparar=foto_ia):
         raise WebError(400, "No hemos podido abrir las fotos. Prueba con fotos JPG o PNG.")
     tipo = "una casa completa" if (body or {}).get("tipo") != "porte" else "unas pocas cosas (un porte)"
     partes.append({"text": PROMPT_FOTOS + f"\nEl cliente dice que se muda {tipo}."})
-    try:
-        texto = gem(MODELOS_FOTOS, [{"role": "user", "parts": partes}], clave,
-                    config={"temperature": 0.1, "maxOutputTokens": 2500, "responseMimeType": "application/json"},
-                    timeout=60)
-        inv = limpiar_inventario(_json_de_texto(texto))
-    except (WebError, ValueError):
-        return {"ok": False, "fallback": True,
+    # Cada modelo por separado: si uno devuelve algo que no es JSON válido, se prueba el siguiente
+    motivos, inv = [], None
+    for modelo in MODELOS_FOTOS:
+        try:
+            texto = gem([modelo], [{"role": "user", "parts": partes}], clave, motivos=motivos, timeout=60,
+                        config={"temperature": 0.1, "maxOutputTokens": 8192, "responseMimeType": "application/json",
+                                "thinkingConfig": {"thinkingLevel": "low"}})
+            inv = limpiar_inventario(_json_de_texto(texto))
+            break
+        except WebError:
+            continue
+        except ValueError:
+            motivos.append(f"{modelo}: JSON no válido")
+            continue
+    if inv is None:
+        print("fotos fallo:", " | ".join(motivos))
+        return {"ok": False, "fallback": True, "motivo": " | ".join(motivos)[:300],
                 "error": "No hemos podido analizar las fotos ahora mismo. Puedes poner tus muebles a mano."}
     inv["ok"] = True
     inv["fotos"] = len(partes) - 1
