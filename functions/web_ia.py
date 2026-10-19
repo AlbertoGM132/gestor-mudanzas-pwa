@@ -381,7 +381,7 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
                             "piso": src.get("piso"), "ascensor": src.get("ascensor"),
                             "aparcamiento": _parking(_metros(src.get("camion_m")))}
 
-    rango = "sin precio (lo confirma Alberto)" if c["sin_precio"] else f"{c['min']}-{c['max']} €"
+    rango = "sin precio (por la distancia, hay que calcularlo a mano)" if c["sin_precio"] else f"{c['min']}-{c['max']} €"
     nota = (f"🧮 Calculadora web: al cliente le salió {rango} (orientativo) · {c['m3']} m³ · "
             f"{c['vehiculo']} · {c['personas']} personas · {c['horas']} h · {c['km']} km")
     camion = [f"{n}: camión a ~{int(m)} m del portal" for n, m in
