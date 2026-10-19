@@ -154,3 +154,8 @@ def test_gemini_guarda_motivos():
     except w.WebError:
         pass
     assert motivos[0].startswith("m1: HTTP 429") and "MAX_TOKENS" in motivos[1]
+
+def test_asistente_sin_nombres():
+    from web_conocimiento import CONOCIMIENTO
+    for n in ("Alberto", "Cristian"):
+        assert n not in CONOCIMIENTO
