@@ -43,7 +43,7 @@ CAMPOS_PUBLICOS = [
     "destinAddress", "destinFloor", "destinElevator",
     "vehicles", "crew", "vehicle", "team", "materials", "notes",
     "stage", "originAccess", "destinAccess", "price",
-    "desiredDate", "desiredWhen", "source", "inventory",
+    "desiredDate", "desiredWhen", "source", "inventory", "webEstimate",
 ]
 VEHICULOS = {"crafter": "Furgoneta VW Crafter", "iveco": "Camión Iveco Daily 20 m³"}
 MAX_DIAS = 31
@@ -203,6 +203,7 @@ def resumen_trabajo(doc_id, data):
         pe, pr = prop.get("estimate") or {}, prop.get("result") or {}
         out["propuesta_claude"] = {
             "precio": prop.get("price"), "fecha": prop.get("at"), "confianza": prop.get("confidence"),
+            "por": prop.get("by") or "Claude",
             "supuestos": prop.get("notes"), "m3": pe.get("m3") or None,
             "vehiculos": [f"{VEHICULOS.get(v.get('type'), v.get('type'))} ({v.get('plan')} km/día, {v.get('km')} km)"
                           for v in pe.get("vehicles") or [] if isinstance(v, dict)],

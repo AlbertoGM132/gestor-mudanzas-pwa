@@ -342,3 +342,6 @@ from mcp_mudanzapro import mudanzapro_mcp  # noqa: E402,F401
 
 # ── Formulario público «Pide tu presupuesto» (/presupuesto) ──
 from formulario_web import solicitud_publica  # noqa: E402,F401
+
+# ── IA de la web pública (asistente, fotos, calculadora, contacto) ──
+from web_ia import web_api  # noqa: E402,F401
