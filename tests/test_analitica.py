@@ -17,6 +17,7 @@ class Repo:
     def guardar_sesion(s, sid, d): s.ses[sid] = d
     def marcar_lead(s, sid, tipo, i): s.ses[sid]["lead"] = {"tipo": tipo, "id": i}
     def sesiones(s, a, b): return [x for x in s.ses.values() if a <= x["dia"] <= b]
+    def primer_dia_sesion(s): return min((x["dia"] for x in s.ses.values()), default=None)
     def trabajos(s): return s.trab
     def redes_dias(s, a, b): return [x for x in s.dias if a <= x["dia"] <= b]
     def publicaciones(s, a, b): return [x for x in s.pubs if a <= x.get("fecha", "") <= b]
@@ -153,6 +154,7 @@ def test_informe_con_y_sin_ia():
     doc = an.generar_informe(r, gem, "K", ["m"], ahora=AHORA)
     assert doc["informe"]["titular"] == "Bien" and doc["desde"] == "2026-10-13" and doc["hasta"] == "2026-10-19"
     assert visto["datos"]["web"]["visitas"] == 1
+    assert visto["datos"]["contexto"]["medicion_web_desde"] == "2026-10-16" and visto["datos"]["contexto"]["web_medida_en_el_periodo"]
     def roto(*a, **k): raise RuntimeError("caída")
     doc = an.generar_informe(r, roto, "K", ["m"], ahora=AHORA)
     assert doc["informe"]["sin_ia"] and "visitas" in doc["informe"]["titular"]
