@@ -774,6 +774,15 @@ directo y práctico, para el dueño (no es analista). Reglas:
   qué fuente trae visitas que contactan y cuál trae visitas que se van, y qué preguntan en el chat
   (eso son ideas de contenido para redes y para las preguntas frecuentes de la web).
 - No des consejos genéricos de marketing.
+- Mira "contexto" antes de nada. La web se mide con un sistema PROPIO (no hay Google Analytics ni código
+  de terceros que revisar). Si "medicion_web_desde" está vacío o es posterior al final del periodo, la web
+  todavía no se medía: dilo UNA vez en el resumen («la medición de la web empezó el …») y no lo cuentes
+  como un problema ni recomiendes revisar el seguimiento. Lo mismo con las redes sin datos: si
+  "redes_con_datos" está vacío, recomienda una sola vez conectarlas en Metricool.
+- Con muy pocos datos (menos de 30 visitas o menos de 5 solicitudes), no saques porcentajes ni tendencias:
+  quédate en lo concreto (qué pasó con cada solicitud) y en qué hacer para tener más datos.
+- Las solicitudes «Sin apuntar» son las que entraron por WhatsApp o teléfono: el dueño las apunta en
+  Panel → Clientes con un clic. Si hay, recomiéndalo, sin pedir procesos ni campos nuevos.
 
 Devuelve EXCLUSIVAMENTE un JSON válido, sin texto alrededor, con esta forma:
 {"titular": "una frase con lo más importante", "resumen": "3-4 frases",
@@ -790,6 +799,19 @@ def _json_de_texto(texto):
     return json.loads(t[i:j + 1]) if i >= 0 and j > i else None
 
 
+def contexto_medicion(repo, r):
+    """Desde cuándo hay datos de cada portal, para que la IA no confunda «aún no se medía» con «va mal»."""
+    primer = None
+    try:
+        primer = repo.primer_dia_sesion() if hasattr(repo, "primer_dia_sesion") else None
+    except Exception:
+        primer = None
+    return {"medicion_web_desde": primer or "", "hoy": r["hasta"],
+            "web_medida_en_el_periodo": bool(primer and primer <= r["hasta"]),
+            "redes_con_datos": sorted(r["redes"]["redes"]),
+            "sistema_web": "medición propia sin cookies (no Google Analytics)"}
+
+
 def generar_informe(repo, gem, clave, modelos, desde=None, hasta=None, ahora=None):
     """Genera y guarda el informe del periodo (por defecto, los últimos 7 días)."""
     ahora = ahora or datetime.now(timezone.utc)
@@ -797,6 +819,7 @@ def generar_informe(repo, gem, clave, modelos, desde=None, hasta=None, ahora=Non
     d = datetime.strptime(desde, "%Y-%m-%d").date() if desde else h - timedelta(days=6)
     r = resumen(repo, d.isoformat(), h.isoformat(), ahora=ahora)
     datos = compacto(r)
+    datos["contexto"] = contexto_medicion(repo, r)
     informe = None
     motivo = ""
     if clave:
@@ -872,6 +895,10 @@ class FirebaseAnaliticaRepo:
                 ref.update({"lead": {"tipo": tipo, "id": trabajo_id}})
         except Exception:
             pass
+
+    def primer_dia_sesion(self):
+        q = self._db.collection("analitica_sesiones").order_by("dia").limit(1)
+        return next(((d.to_dict() or {}).get("dia") for d in q.stream()), None)
 
     def sesiones(self, desde, hasta):
         q = (self._db.collection("analitica_sesiones").where("dia", ">=", desde).where("dia", "<=", hasta))
