@@ -42,7 +42,9 @@ def usuario(req, verificar=None):
     except Exception:
         return None
     email = (tok.get("email") or "").lower()
-    return email if email in EQUIPO and tok.get("email_verified", True) is not False else None
+    # Igual que MudanzaPro (main.py y firestore.rules): basta con que el correo sea del equipo.
+    # Las cuentas de email y contraseña no tienen el correo «verificado», así que no se exige.
+    return email if email in EQUIPO else None
 
 
 def accion(body, quien, repo, gem=None, clave=""):
