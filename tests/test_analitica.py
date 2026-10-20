@@ -171,6 +171,8 @@ def test_panel_auth_y_acciones():
     assert panel.usuario(Req({}), verif) == "albertogmez99@gmail.com"
     assert panel.usuario(Req({}, token="x"), verif) is None
     assert panel.usuario(Req({}, token=None), verif) is None
+    # cuenta de email y contraseña de MudanzaPro: correo sin verificar, pero es del equipo
+    assert panel.usuario(Req({}), lambda t: {"email": "AlbertoGmez99@gmail.com", "email_verified": False}) == "albertogmez99@gmail.com"
     out = panel.accion({"accion": "resumen", "desde": "2026-10-01", "hasta": "2026-10-20"}, "a", r)
     assert out["web"]["visitas"] == 0
     panel.accion({"accion": "asignar_origen", "id": "T9", "origen": "tiktok"}, "a", r)
