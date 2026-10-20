@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
+import mcp_analitica as ana
 import mcp_escritura as esc
 
 MCP_KEY = SecretParam("MCP_KEY")
@@ -108,6 +109,7 @@ TOOLS = [
 
 
 TOOLS += esc.TOOLS
+TOOLS += ana.TOOLS
 
 
 class ToolError(Exception):
@@ -393,6 +395,18 @@ HANDLERS = {
 }
 
 
+def _analitica(fn):
+    def handler(repo, args):
+        try:
+            return fn(repo, args)
+        except ana.AnaliticaToolError as e:
+            raise ToolError(str(e))
+    return handler
+
+
+HANDLERS.update({k: _analitica(v) for k, v in ana.HANDLERS.items()})
+
+
 # ── JSON-RPC / MCP ─────────────────────────────────────────
 
 def _ok(msg_id, result):
@@ -420,7 +434,9 @@ def handle_message(msg, repo_factory):
                 "Lectura de trabajos, fotos y solicitudes; escritura limitada a crear/editar "
                 "solicitudes y presupuestos y programar fechas (nunca borra ni cierra trabajos). "
                 "Antes de crear o modificar algo, enséñale a Alberto lo que vas a guardar y espera su OK. "
-                "Precios sin IVA. Fechas YYYY-MM-DD, hora de Madrid."
+                "Precios sin IVA. Fechas YYYY-MM-DD, hora de Madrid. "
+                "Las herramientas analitica_* unen la web, las redes y MudanzaPro: úsalas cuando pregunte "
+                "cómo va el negocio, un portal o una publicación."
             ),
         })
     if method == "ping":

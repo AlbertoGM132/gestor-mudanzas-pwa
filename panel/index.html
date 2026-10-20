@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#141a33" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Panel · Mudanzas del Sur</title>
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" />
+  <link rel="stylesheet" href="/panel.css" />
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="form-login" autocomplete="on">
+      <img src="/logo-claro.webp" alt="Mudanzas del Sur" width="112" height="54" />
+      <h1>Panel del negocio</h1>
+      <p>Web, redes y MudanzaPro en un solo sitio. Entra con tu cuenta de MudanzaPro.</p>
+      <label class="field">Email<input class="input" id="email" name="email" type="email" autocomplete="username" spellcheck="false" required /></label>
+      <label class="field">Contraseña<input class="input" id="pass" name="password" type="password" autocomplete="current-password" required /></label>
+      <div class="error" id="login-error" aria-live="polite"></div>
+      <button class="btn btn-ink" type="submit" id="btn-login">Entrar</button>
+    </form>
+  </div>
+
+  <div id="app" hidden>
+    <header class="top">
+      <div class="bar">
+        <img src="/logo-claro.webp" alt="Mudanzas del Sur" width="79" height="38" />
+        <div class="titulo">Panel del negocio<small id="quien"></small></div>
+        <button class="btn btn-ghost" id="btn-salir" type="button">Salir</button>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Secciones">
+        <button role="tab" data-tab="resumen">Resumen</button>
+        <button role="tab" data-tab="web">Web</button>
+        <button role="tab" data-tab="redes">Redes</button>
+        <button role="tab" data-tab="clientes">Clientes</button>
+        <button role="tab" data-tab="visitas">Visitas</button>
+        <button role="tab" data-tab="informes">Informes IA</button>
+        <button role="tab" data-tab="enlaces">Enlaces</button>
+      </nav>
+    </header>
+    <main id="main">
+      <div class="filtros" id="filtros">
+        <div class="presets" role="group" aria-label="Periodo">
+          <button type="button" data-dias="7">7 días</button>
+          <button type="button" data-dias="28">28 días</button>
+          <button type="button" data-dias="90">90 días</button>
+          <button type="button" data-dias="mes">Este mes</button>
+          <button type="button" data-dias="mes-1">Mes pasado</button>
+        </div>
+        <label class="sr" for="f-desde">Desde</label><input type="date" id="f-desde" name="desde" />
+        <label class="sr" for="f-hasta">Hasta</label><input type="date" id="f-hasta" name="hasta" />
+        <span class="rango" id="rango-txt"></span>
+      </div>
+      <section id="vista" aria-live="polite"></section>
+    </main>
+  </div>
+  <script type="module" src="/panel.js"></script>
+</body>
+</html>
