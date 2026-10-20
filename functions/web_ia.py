@@ -6,6 +6,7 @@ Funciones de IA de la web pública (mudanzasdelsur.es), en UNA función HTTP:
   POST /estimar   calcula un precio ORIENTATIVO con las tarifas reales y guarda
                   la solicitud en MudanzaPro (con fotos, inventario y propuesta)
   POST /contacto  formulario de contacto de la web → solicitud en MudanzaPro
+  POST /evento    analítica de la web sin cookies (ver analitica.py)
 
 Seguridad:
   - La clave de Gemini vive en Secret Manager (GEMINI_KEY); nunca llega al navegador.
@@ -26,6 +27,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+import analitica as an
 import estimador
 import formulario_web as fw
 from mcp_escritura import DEFAULT_TARIFAS
@@ -392,6 +394,7 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
         "origen_txt": "🌐 Llegó por la calculadora de la web",
         "createdBy": "Calculadora web",
         "data": {
+            "attribution": an.atribucion(body),
             "originCoords": {"lat": o_xy[0], "lng": o_xy[1]}, "destinCoords": {"lat": d_xy[0], "lng": d_xy[1]},
             "webEstimate": {**c, "supuestos": r["supuestos"], "fuenteKm": fuente_km, "at": ahora_iso},
             "proposal": {"estimate": r["estimacion"], "result": r["resultado"], "price": r["resultado"]["price"],
@@ -405,6 +408,7 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
         raise WebError(e.status, e.mensaje)
     if res.get("ignorada"):
         return {"ok": True}
+    _marcar_lead(repo, body, "calculadora", res.get("id"))
     publico = {k: c[k] for k in ("m3", "vehiculo", "personas", "horas", "dias", "km", "sin_precio", "especiales")}
     if not c["sin_precio"]:
         publico.update(min=c["min"], max=c["max"])
@@ -421,10 +425,37 @@ def contacto(body, ip, repo, ahora=None):
             "servicios": [s for s in (body.get("servicios") or []) if s in fw.SERVICIOS]}
     try:
         res = fw.procesar(form, ip, repo, ahora=ahora,
-                          extra={"origen_txt": "🌐 Llegó por el formulario de contacto de la web", "createdBy": "Web"})
+                          extra={"origen_txt": "🌐 Llegó por el formulario de contacto de la web", "createdBy": "Web",
+                                 "data": {"attribution": an.atribucion(body)}})
     except fw.FormError as e:
         raise WebError(e.status, e.mensaje)
+    if not res.get("ignorada"):
+        _marcar_lead(repo, body, "contacto", res.get("id"))
     return {"ok": True}
+
+
+def _marcar_lead(repo, body, tipo, trabajo_id):
+    """La visita de la web que envió la solicitud queda enlazada con el trabajo."""
+    a = an.atribucion(body) or {}
+    if a.get("sid") and hasattr(repo, "marcar_lead"):
+        try:
+            repo.marcar_lead(a["sid"], tipo, trabajo_id)
+        except Exception:
+            pass
+
+
+def registrar_pregunta(repo, body, ahora):
+    """Guarda lo que preguntan al chat (sin teléfonos ni emails) para sacar ideas de contenido."""
+    body = body if isinstance(body, dict) else {}
+    texto = an.limpiar_pregunta(body.get("message"))
+    if len(texto) < 3 or not hasattr(repo, "guardar_pregunta"):
+        return
+    try:
+        repo.guardar_pregunta({"texto": texto, "dia": an.dia_madrid(ahora), "at": ahora,
+                               "pagina": fw._txt(body.get("pagina"), 120),
+                               "sid": fw._txt(body.get("sid"), 40), "expira": ahora + timedelta(days=an.DIAS_CONSERVAR)})
+    except Exception:
+        pass
 
 
 # ── HTTP ────────────────────────────────────────────────────
@@ -449,6 +480,15 @@ def handle(req, repo_factory=None, clave=None):
     if req.method != "POST" or not origen_permitido(origen):
         return resp({"ok": False, "error": "No permitido."}, 403)
     accion = (req.path or "").rstrip("/").rsplit("/", 1)[-1]
+    if accion == "evento":
+        # Analítica: llega con sendBeacon (text/plain); nunca devuelve error a la web
+        try:
+            if (req.content_length or 0) <= 64_000:
+                cuerpo = json.loads(req.get_data(as_text=True) or "null")
+                an.ingerir(cuerpo, req.headers.get("User-Agent", ""), (repo_factory or WebRepo)())
+        except Exception as e:  # noqa: BLE001
+            print("web_api evento error:", repr(e))
+        return resp({"ok": True}, 200)
     if accion not in LIMITES:
         return resp({"ok": False, "error": "No encontrado."}, 404)
     if (req.content_length or 0) > fw.MAX_BODY_BYTES:
@@ -465,6 +505,7 @@ def handle(req, repo_factory=None, clave=None):
                          "error": "Has hecho muchas consultas seguidas. " + WHATSAPP}, 429)
         clave = clave if clave is not None else os.environ.get("GEMINI_KEY", "").strip()
         if accion == "chat":
+            registrar_pregunta(repo, body, ahora)
             return resp(chat(body, clave))
         if accion == "fotos":
             return resp(fotos(body, clave))
@@ -506,6 +547,22 @@ class WebRepo(fw.FirebaseFormRepo):
     def tarifas(self):
         snap = self._db.collection("config").document("tarifas").get()
         return snap.to_dict() if snap.exists else {}
+
+    # Analítica (misma base de datos)
+    def _an(self):
+        return an.FirebaseAnaliticaRepo(self._db)
+
+    def sesion(self, sid):
+        return self._an().sesion(sid)
+
+    def guardar_sesion(self, sid, data):
+        self._an().guardar_sesion(sid, data)
+
+    def marcar_lead(self, sid, tipo, trabajo_id):
+        self._an().marcar_lead(sid, tipo, trabajo_id)
+
+    def guardar_pregunta(self, data):
+        self._an().guardar_pregunta(data)
 
 
 try:

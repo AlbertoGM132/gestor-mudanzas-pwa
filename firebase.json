@@ -17,49 +17,95 @@
   "storage": {
     "rules": "storage.rules"
   },
-  "hosting": {
-    "public": "public",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "/api/solicitud",
-        "function": {
-          "functionId": "solicitud_publica",
-          "region": "europe-west1"
+  "hosting": [
+    {
+      "site": "smartsonubalogictis",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "/api/solicitud",
+          "function": {
+            "functionId": "solicitud_publica",
+            "region": "europe-west1"
+          }
+        },
+        {
+          "source": "/presupuesto",
+          "destination": "/presupuesto.html"
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
         }
-      },
-      {
-        "source": "/presupuesto",
-        "destination": "/presupuesto.html"
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "**/*.@(html|js|css|json)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(html|js|css|json)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "site": "mudanzasdelsur-panel",
+      "public": "panel",
+      "ignore": [
+        "**/.*"
+      ],
+      "rewrites": [
+        {
+          "source": "/api/panel",
+          "function": {
+            "functionId": "panel_api",
+            "region": "europe-west1"
           }
-        ]
-      },
-      {
-        "source": "/",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache"
-          }
-        ]
-      }
-    ]
-  }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            },
+            {
+              "key": "X-Robots-Tag",
+              "value": "noindex, nofollow"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "same-origin"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
