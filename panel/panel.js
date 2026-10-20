@@ -382,6 +382,7 @@ async function cargarDatos() {
   try {
     const [R, inf] = await Promise.all([api("resumen", { desde: estado.desde, hasta: estado.hasta }), estado.informes ? null : api("informes").catch(() => ({ informes: [] }))]);
     estado.R = R;
+    estado.cargado = Date.now();
     if (inf) estado.informes = inf.informes || [];
   } catch (e) { toast(e.message); }
   document.body.classList.remove("cargando");
@@ -406,7 +407,14 @@ async function render() {
 function irA(tab) { if (!VISTAS[tab]) tab = "resumen"; estado.tab = tab; guardar("tab", tab); if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab); render(); window.scrollTo({ top: 0 }); }
 function ponerPreset(p) { estado.preset = p; guardar("preset", p); [estado.desde, estado.hasta] = calcularRango(p); estado.R = null; render(); }
 
+// Datos frescos: botón «Actualizar» y al volver a la pestaña si han pasado más de 2 minutos
+function actualizar() { estado.R = null; estado.informes = null; render(); }
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && estado.cargado && Date.now() - estado.cargado > 120000 && !$("app").hidden) actualizar();
+});
+
 function arrancar(email) {
+  $("btn-actualizar").onclick = actualizar;
   $("login").hidden = true; $("app").hidden = false; $("quien").textContent = email;
   [estado.desde, estado.hasta] = calcularRango(estado.preset);
   document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => irA(b.dataset.tab)));
