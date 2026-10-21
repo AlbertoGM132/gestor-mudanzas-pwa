@@ -80,3 +80,14 @@ def test_contacto_guarda_origen_y_enlaza_visita():
     w.handle(Req(path="/chat", body={"message": "¿cuánto cuesta? mi tel 612 345 678", "sid": "abcdefghij12"}),
              repo_factory=lambda: repo, clave="")
     assert preguntas and "612" not in preguntas[0]["texto"]
+
+
+def test_contacto_guarda_gclid_de_google_ads():
+    class R(Repo):
+        def marcar_lead(s, *a): pass
+    repo = R()
+    w.handle(Req(path="/contacto", body={"nombre": "Ana", "telefono": "612345678", "t": 9000,
+             "atribucion": {"sid": "abcdefghij12", "clid": "gclid", "clid_id": "Cj0KCQ<script>abc-_1"}}),
+             repo_factory=lambda: repo, clave="")
+    at = repo.creados[0]["attribution"]
+    assert at["fuente"] == "google_ads" and at["gclid"] == "Cj0KCQscriptabc-_1"

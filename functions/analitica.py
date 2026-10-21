@@ -347,6 +347,8 @@ def atribucion(body):
         "sid": sid if _SID.match(sid) else "", "fuente": fuente, "detalle": detalle,
         "medio": _txt(a.get("utm_medium"), 40).lower(), "campana": _txt(a.get("utm_campaign"), 60),
         "contenido": _txt(a.get("utm_content"), 60), "landing": limpiar_eventos([{"n": "vista", "p": a.get("landing")}])[0]["p"],
+        # Código del clic de Google Ads: para subir más adelante a Google qué clics acabaron en trabajo
+        "gclid": gid if (gid := re.sub(r"[^A-Za-z0-9_-]", "", str(a.get("clid_id") or ""))[:200]) and fuente == "google_ads" else "",
     }
 
 
