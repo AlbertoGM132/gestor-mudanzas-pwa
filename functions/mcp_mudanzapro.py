@@ -347,7 +347,10 @@ def tool_fotos(repo, args):
             fallidas += 1
             continue
         try:
-            contenido.append({"type": "image", "mimeType": "image/jpeg", "data": _reducir_imagen(repo.foto(path))})
+            img = _reducir_imagen(repo.foto(path))
+            if foto.get("caption"):
+                contenido.append({"type": "text", "text": f"El cliente dice que en esta foto sale: {foto['caption']}"})
+            contenido.append({"type": "image", "mimeType": "image/jpeg", "data": img})
         except Exception:
             fallidas += 1
     if fallidas:

@@ -49,13 +49,24 @@ CUANDO = {"pronto": "lo antes posible", "nosabe": "aún no lo sabe"}
 CASAS = {"estudio": "Estudio", "1": "1 dormitorio", "2": "2 dormitorios", "3": "3 dormitorios",
          "4": "4 o más dormitorios", "chalet": "Chalet o casa grande"}
 MUEBLES = {"camas": ("cama", "camas"), "canapes": ("canapé", "canapés"),
+           "somieres": ("somier o base con patas", "somieres o bases con patas"), "colchones": ("colchón suelto", "colchones sueltos"),
            "armario2": ("armario de 2 puertas", "armarios de 2 puertas"), "armario4": ("armario de 4 puertas", "armarios de 4 puertas"),
-           "armario6": ("armario de 6 puertas o esquinero", "armarios de 6 puertas o esquineros"), "sofas": ("sofá", "sofás"),
+           "armario6": ("armario de 6 puertas o esquinero", "armarios de 6 puertas o esquineros"),
+           "comodas": ("cómoda, mesita o estantería", "cómodas, mesitas o estanterías"),
+           "sofas": ("sofá", "sofás"), "sillones": ("sillón o butaca", "sillones o butacas"),
+           "mesas": ("mesa", "mesas"), "mesascentro": ("mesa de centro o auxiliar", "mesas de centro o auxiliares"),
+           "sillas": ("silla", "sillas"), "muebletv": ("mueble de TV, aparador o vitrina", "muebles de TV, aparadores o vitrinas"),
+           "tv": ("televisor", "televisores"),
            "frigorifico": ("frigorífico", "frigoríficos"), "lavadora": ("lavadora/secadora", "lavadoras/secadoras"),
-           "mesas": ("mesa", "mesas"), "comodas": ("cómoda, aparador o estantería", "cómodas, aparadores o estanterías")}
+           "electro": ("otro electrodoméstico", "otros electrodomésticos"),
+           "jardin": ("mueble de jardín o terraza", "muebles de jardín o terraza"),
+           "escritorios": ("escritorio", "escritorios"), "bicis": ("bicicleta", "bicicletas")}
 DESMONTAJE = {"si": "desmontar y montar (lo hacemos nosotros)", "desmontar": "solo desmontar",
               "no": "no hace falta", "nose": "no lo sabe"}
-EMBALAJE = {"todo": "lo embalamos nosotros (todo)", "fragil": "nosotros solo lo frágil", "yo": "lo embala el cliente"}
+EMBALAJE = {"todo": "lo embalamos nosotros (todo)", "fragil": "nosotros solo lo frágil", "yo": "lo embala el cliente",
+            "nada": "no hay nada que embalar (solo muebles)"}
+ENTREGA = {"mismo": "el mismo día de la recogida", "espera": "puede esperar unos días"}
+DUPLICADO_HORAS = 72                    # otra solicitud con el mismo teléfono en este plazo = posible repetida
 CAJAS = {"10": "menos de 10", "30": "10 a 30", "60": "30 a 60", "mas": "más de 60", "nose": "no lo sabe"}
 ESPECIALES = {"piano": "piano", "caja-fuerte": "caja fuerte", "nevera-americana": "nevera americana",
               "pesado": "algo de más de 100 kg", "plantas": "plantas grandes", "arte": "cuadros u obras de arte"}
@@ -146,8 +157,13 @@ def inventario(d):
             muebles[k] = n
     if muebles:
         nombre = lambda k, n: MUEBLES[k][0 if n == 1 else 1]
+        crudos = d.get("detalles") if isinstance(d.get("detalles"), dict) else {}
+        detalles = {k: _txt(crudos.get(k), 200) for k in muebles if _txt(crudos.get(k), 200)}
         inv["muebles"] = {nombre(k, n): n for k, n in muebles.items()}
-        lineas.append("🛋 Muebles: " + ", ".join(f"{n} {nombre(k, n)}" for k, n in muebles.items()))
+        if detalles:
+            inv["detalles"] = {nombre(k, muebles[k]): t for k, t in detalles.items()}
+        lineas.append("🛋 Muebles: " + ", ".join(
+            f"{n} {nombre(k, n)}" + (f" ({detalles[k]})" if k in detalles else "") for k, n in muebles.items()))
     otros = _txt(d.get("otros"), 800)
     if otros:
         inv["otros"] = otros
@@ -217,6 +233,7 @@ def procesar(body, ip, repo, ahora=None, extra=None):
             cuando_txt += " (con flexibilidad)"
     else:
         cuando_txt = CUANDO.get(cuando, "")
+    entrega = ENTREGA.get(body.get("entrega"), "")
 
     inv, lineas_inv = inventario(body.get("inventario"))
     raw_inv = body.get("inventario") if isinstance(body.get("inventario"), dict) else {}
@@ -235,6 +252,8 @@ def procesar(body, ip, repo, ahora=None, extra=None):
         notas.append(comentario)
     if cuando_txt:
         notas.append(f"📅 Fecha que le viene bien: {cuando_txt}")
+    if entrega:
+        notas.append(f"🚚 Entrega: {entrega}")
     if body.get("fotos_whatsapp"):
         notas.append("📷 Dice que mandará las fotos por WhatsApp")
     notas += [str(x) for x in extra.get("notas") or []]
@@ -247,7 +266,7 @@ def procesar(body, ip, repo, ahora=None, extra=None):
         "destinAddress": d_dir, "destinFloor": d_piso, "destinElevator": d_asc, "destinAccess": d_acc,
         "notes": "\n".join(notas), "desiredDate": fecha,
         "desiredWhen": "" if fecha else (cuando if cuando in CUANDO else ""),
-        "inventory": inv,
+        "inventory": {**inv, **({"entrega": entrega} if entrega else {})},
         "stage": "solicitud", "date": "", "days": 1, "startTime": "08:00", "status": "pendiente",
         "crew": [], "vehicles": [], "materials": [], "photos": [], "price": "",
         "source": "web", "createdBy": extra.get("createdBy") or "Formulario web",
@@ -256,17 +275,38 @@ def procesar(body, ip, repo, ahora=None, extra=None):
     data.update(extra.get("data") or {})
 
     # 5) Fotos: las que fallen se saltan, no tiramos la solicitud por una foto
+    # Cada foto puede llegar sola (data URL) o con lo que el cliente dice que sale en ella: {"data", "nota"}
     sello = ahora.strftime("%Y%m%d_%H%M%S")
-    fallidas = 0
+    fallidas, pies = 0, []
     for i, f in enumerate((body.get("fotos") or [])[:MAX_FOTOS]):
+        nota = _txt(f.get("nota"), 300) if isinstance(f, dict) else ""
         try:
-            jpeg = foto_jpeg(f)
+            jpeg = foto_jpeg(f.get("data") if isinstance(f, dict) else f)
             ruta = f"trabajos/web/{sello}_{uuid.uuid4().hex[:6]}_{i + 1}.jpg"
-            data["photos"].append({"url": repo.subir_foto(ruta, jpeg), "storagePath": ruta})
+            foto = {"url": repo.subir_foto(ruta, jpeg), "storagePath": ruta}
+            if nota:
+                foto["caption"] = nota
+                pies.append(f"{len(data['photos']) + 1}) {nota}")
+            data["photos"].append(foto)
         except Exception:
             fallidas += 1
+    if pies:
+        data["notes"] += "\n📷 Lo que sale en las fotos: " + " · ".join(pies)
     if fallidas:
         data["notes"] += f"\n⚠️ {fallidas} foto(s) no se pudieron guardar"
+
+    # Misma persona que ya pidió presupuesto hace poco: casi siempre es una corrección de la anterior
+    buscar = getattr(repo, "reciente_mismo_telefono", None)
+    if buscar:
+        try:
+            previa = buscar(tel, ahora - timedelta(hours=DUPLICADO_HORAS))
+        except Exception:
+            previa = None
+        if previa:
+            data["possibleDuplicateOf"] = previa["id"]
+            cuando_prev = previa.get("fecha") or "hace poco"
+            data["notes"] = (f"⚠️ PUEDE ESTAR REPETIDA: el mismo teléfono ya pidió presupuesto {cuando_prev} "
+                             f"({previa.get('nombre') or 'sin nombre'}). Compara las dos y quédate con una.\n" + data["notes"])
 
     doc_id = repo.crear(data)
 
@@ -317,6 +357,20 @@ class FirebaseFormRepo:
         blob.upload_from_string(jpeg, content_type="image/jpeg")
         return (f"https://firebasestorage.googleapis.com/v0/b/{self._bucket.name}/o/"
                 f"{quote(ruta, safe='')}?alt=media&token={token}")
+
+    def reciente_mismo_telefono(self, tel, desde):
+        """La solicitud más reciente con este teléfono creada después de `desde`, o None."""
+        hit = None
+        for d in self._db.collection("trabajos").where("phone", "==", tel).limit(20).stream():
+            x = d.to_dict() or {}
+            creado = x.get("createdAt")
+            if creado is None or creado < desde or x.get("status") == "completado":
+                continue
+            if hit is None or creado > hit["_c"]:
+                from zoneinfo import ZoneInfo
+                local = creado.astimezone(ZoneInfo("Europe/Madrid"))
+                hit = {"id": d.id, "nombre": x.get("clientName", ""), "fecha": f"el {local:%d/%m}", "_c": creado}
+        return hit
 
     def crear(self, data):
         ahora = self._fs.SERVER_TIMESTAMP
