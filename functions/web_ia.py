@@ -314,10 +314,13 @@ def _items_entrada(lista):
 
 
 # Objetos de la calculadora → contadores del formulario (para el inventario de la app)
-A_FORM = {"cama": "camas", "cama_individual": "camas", "canape": "canapes", "armario2": "armario2",
-          "armario4": "armario4", "armario6": "armario6", "sofa": "sofas", "sofa_pequeno": "sofas",
-          "frigorifico": "frigorifico", "lavadora": "lavadora", "secadora": "lavadora",
-          "mesa": "mesas", "mesa_pequena": "mesas", "comoda": "comodas", "estanteria": "comodas", "aparador": "comodas"}
+A_FORM = {"cama": "camas", "cama_individual": "camas", "canape": "canapes", "colchon": "colchones", "armario2": "armario2",
+          "armario4": "armario4", "armario6": "armario6", "sofa": "sofas", "sofa_pequeno": "sofas", "sillon": "sillones",
+          "frigorifico": "frigorifico", "lavadora": "lavadora", "secadora": "lavadora", "lavavajillas": "electro",
+          "horno_microondas": "electro", "electrodomestico": "electro", "televisor": "tv",
+          "mesa": "mesas", "mesa_pequena": "mesascentro", "silla": "sillas", "comoda": "comodas", "mesita": "comodas",
+          "estanteria": "comodas", "aparador": "muebletv", "mueble_tv": "muebletv", "escritorio": "escritorios",
+          "bicicleta": "bicis"}
 
 
 def _metros(v):

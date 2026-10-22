@@ -447,3 +447,8 @@
 .proposal{border-top:1px dashed var(--border);padding-top:10px;margin-top:4px}
 .proposal-notes{white-space:pre-wrap;font-size:.8rem;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:9px 10px;margin:8px 0;line-height:1.4}
 .btn-wa-2{margin-top:6px;background:var(--surface);color:var(--wa);border:2px solid var(--wa)}
+
+    /* Fotos con lo que dice el cliente que sale en ellas */
+    .photo-fig{margin:0;display:flex;flex-direction:column;gap:4px;min-width:0}
+    .photo-fig figcaption{font-size:.72rem;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
+    .dup-tag{background:var(--amberSoft);color:var(--amber)}

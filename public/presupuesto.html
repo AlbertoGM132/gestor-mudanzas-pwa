@@ -58,7 +58,13 @@
 
   /* Contadores de muebles */
   .counters{display:grid;gap:8px}
-  .counter{display:flex;align-items:center;gap:10px;background:var(--card);border:2px solid var(--line);border-radius:var(--radius);padding:8px 10px}
+  .grupo{font-size:.95rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:18px 0 8px}
+  .grupo:first-of-type{margin-top:4px}
+  .counter{background:var(--card);border:2px solid var(--line);border-radius:var(--radius);padding:8px 10px}
+  .ct-row{display:flex;align-items:center;gap:10px}
+  .ct-label small{display:block;font-weight:600;color:var(--muted);font-size:.85rem}
+  .ct-det{display:block;width:100%;margin-top:8px;min-height:48px;padding:10px 12px;font-size:1rem;background:#fff;border:2px solid var(--line);border-radius:12px}
+  .ct-det:focus{border-color:var(--accent);outline:none}
   .counter.on{border-color:var(--accent);background:var(--accentSoft)}
   .counter .em{font-size:1.4rem;width:30px;text-align:center;flex:none}
   .ct-label{flex:1;font-weight:800;font-size:1rem;line-height:1.2}
@@ -79,10 +85,26 @@
   .photo-btns{display:grid;gap:10px;grid-template-columns:1fr 1fr}
   .photo-btn{min-height:96px;flex-direction:column;justify-content:center;text-align:center;gap:4px}
   .photo-btn .em{font-size:2rem;width:auto}
-  .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
-  .thumb{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:#eee}
+  .thumbs{display:grid;gap:10px;margin-top:14px}
+  .thumb{display:grid;grid-template-columns:96px 1fr;gap:10px;align-items:start;background:var(--card);border:2px solid var(--line);border-radius:var(--radius);padding:8px}
+  .thumb-img{position:relative;width:96px;height:96px;border-radius:10px;overflow:hidden;background:#eee}
   .thumb img{width:100%;height:100%;object-fit:cover}
-  .thumb button{position:absolute;top:6px;right:6px;width:36px;height:36px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:1.1rem}
+  .thumb-img button{position:absolute;top:4px;right:4px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:1rem}
+  .thumb label{display:block;font-weight:800;font-size:.9rem;margin-bottom:4px}
+  .thumb textarea{width:100%;min-height:68px;padding:8px 10px;font-size:1rem;border:2px solid var(--line);border-radius:10px;resize:vertical}
+  .thumb textarea:focus{border-color:var(--accent);outline:none}
+  .tip{background:var(--accentSoft);border-radius:var(--radius);padding:12px 14px;font-size:.98rem;margin-bottom:16px}
+  .tip b{display:block;margin-bottom:2px}
+
+  /* Repaso */
+  .rev{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:4px 14px;margin-bottom:12px}
+  .rev-item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+  .rev-item:last-child{border-bottom:none}
+  .rev-item div{flex:1;min-width:0}
+  .rev-item dt{font-size:.85rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .rev-item dd{margin:2px 0 0;font-weight:700;white-space:pre-line;overflow-wrap:anywhere}
+  .rev-item dd.vacio{color:var(--muted);font-weight:600;font-style:italic}
+  .rev-item button{flex:none;background:none;border:2px solid var(--line);border-radius:12px;padding:8px 12px;font-weight:800;color:var(--accent);font-size:.95rem}
   .count{margin-top:10px;font-weight:800;color:var(--ok)}
   .busy{margin-top:10px;color:var(--muted);font-weight:700}
 
@@ -170,33 +192,66 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── Estado (se guarda en el móvil por si cierra la página; las fotos no) ──
-const S0 = () => ({servicios:[], casa:'', muebles:{}, mueblesTexto:'', desmontaje:'', embalaje:'', cajas:'', especiales:[],
-         origen:{}, destino:{}, destinoNoSe:false, cuando:'', fecha:'', flexible:false,
+const S0 = () => ({servicios:[], casa:'', muebles:{}, mueblesDetalle:{}, mueblesTexto:'', desmontaje:'', embalaje:'', cajas:'', especiales:[],
+         origen:{}, destino:{}, destinoNoSe:false, cuando:'', fecha:'', flexible:false, entrega:'',
          fotosWhatsapp:false, nombre:'', telefono:'', comentario:''});
 let S = S0();
-let fotos = [];          // [{id, data}]  data = dataURL JPEG ya reducido
+let fotos = [];          // [{id, data, nota}]  data = dataURL JPEG ya reducido
 let paso = 0, enviando = false, procesando = 0;
+let desdeRepaso = '';   // id del último paso a revisar antes de volver al repaso ('' = recorrido normal)
+const HASTA = {origen:'origen-camion', destino:'destino-camion'};
 try { const g = JSON.parse(localStorage.getItem(KEY) || 'null'); if (g && g.S) { S = {...S, ...g.S}; } } catch (e) {}
+if (!S.mueblesDetalle || typeof S.mueblesDetalle !== 'object') S.mueblesDetalle = {};
 const guardar = () => { try { localStorage.setItem(KEY, JSON.stringify({S})); } catch (e) {} };
 
 const TOWNS = ['Huelva','Aljaraque','Punta Umbría','Cartaya','Lepe','Isla Cristina','Ayamonte','Gibraleón','San Juan del Puerto',
-  'Moguer','Palos de la Frontera','Mazagón','El Portil','Trigueros','Niebla','Bollullos Par del Condado','La Palma del Condado',
-  'Almonte','Valverde del Camino','Villablanca','Sevilla','Dos Hermanas','Mairena del Aljarafe','Cádiz','Málaga','Madrid'];
+  'Moguer','Palos de la Frontera','Mazagón','El Portil','Nuevo Portil','El Rompido','Islantilla','Trigueros','Niebla','Bollullos Par del Condado',
+  'La Palma del Condado','Almonte','Valverde del Camino','Villablanca','Sevilla','Dos Hermanas','Mairena del Aljarafe','Cádiz','Málaga','Madrid'];
 
 const SERV = [
-  ['mudanza','🏠','Mudanza completa','Toda la casa o el piso'],
-  ['porte','🛋️','Porte','Unos pocos muebles o cosas'],
+  ['mudanza','🏠','Mudanza completa','Llevar toda la casa o el piso'],
+  ['porte','🛋️','Porte','Llevar algunos muebles o cosas sueltas'],
   ['montaje','🔧','Desmontar y montar muebles','Armarios, camas, cocinas…'],
   ['embalaje','📦','Embalar','Cajas, ropa, libros…'],
   ['fragil','🍽️','Vajilla y cosas frágiles','Cristal, espejos, cuadros…'],
-  ['otro','✏️','Otra cosa','Nos lo cuentas al final'],
+  ['otro','✏️','Otra cosa','Nos lo cuentas más adelante'],
 ];
 const CASAS = [['estudio','🛏️','Estudio'],['1','🏠','1 dormitorio'],['2','🏠','2 dormitorios'],['3','🏡','3 dormitorios'],['4','🏡','4 o más dormitorios'],['chalet','🏘️','Chalet o casa grande']];
-const MUEBLES = [['camas','🛏️','Camas'],['canapes','🛏️','Canapés (camas con arcón)'],['armario2','🚪','Armarios de 2 puertas'],['armario4','🚪','Armarios de 4 puertas'],
-  ['armario6','🚪','Armarios de 6 puertas o esquineros'],['sofas','🛋️','Sofás'],['frigorifico','🧊','Frigoríficos'],['lavadora','🧺','Lavadoras o secadoras'],
-  ['mesas','🍽️','Mesas'],['comodas','🗄️','Cómodas, aparadores o estanterías']];
+// [clave, icono, nombre, aclaración, ejemplo para el detalle]
+const GRUPOS = [
+  ['Dormitorios', [
+    ['camas','🛏️','Camas','Con su colchón','Ej.: 1 de matrimonio y 2 individuales'],
+    ['canapes','🛏️','Canapés','Base de cama que se abre para guardar cosas','Ej.: 150 × 190'],
+    ['somieres','🛏️','Somieres o bases con patas','Sin colchón','Ej.: 90 × 190, con patas'],
+    ['colchones','🛏️','Colchones sueltos','','Ej.: 2 de 90 y 1 de 150'],
+    ['armario2','🚪','Armarios de 1 o 2 puertas','','Ej.: uno con espejo'],
+    ['armario4','🚪','Armarios de 3 o 4 puertas','','Ej.: de madera maciza'],
+    ['armario6','🚪','Armarios de 5 o 6 puertas, o esquineros','','Ej.: esquinero de 2 metros'],
+    ['comodas','🗄️','Cómodas, mesitas o estanterías','','Ej.: 2 mesitas y una cómoda'],
+  ]],
+  ['Salón y comedor', [
+    ['sofas','🛋️','Sofás','Escribe las medidas o las plazas','Ej.: 2 de 160 cm y 1 de 120 cm'],
+    ['sillones','💺','Sillones o butacas','','Ej.: un sillón relax'],
+    ['mesas','🍽️','Mesas de comedor','','Ej.: de cristal, para 6'],
+    ['mesascentro','☕','Mesas de centro o auxiliares','',''],
+    ['sillas','🪑','Sillas','',''],
+    ['muebletv','📺','Muebles de TV, aparadores o vitrinas','','Ej.: mueble de salón de 3 metros'],
+    ['tv','📺','Televisores','','Ej.: uno de 65 pulgadas'],
+  ]],
+  ['Cocina y electrodomésticos', [
+    ['frigorifico','🧊','Frigoríficos','','Ej.: uno americano'],
+    ['lavadora','🧺','Lavadoras o secadoras','',''],
+    ['electro','🔌','Otros electrodomésticos','Lavavajillas, horno, microondas…',''],
+  ]],
+  ['Terraza, jardín y otros', [
+    ['jardin','🌿','Muebles de jardín o terraza','Cuenta cada pieza: sofá, butaca, mesa…','Ej.: sofá, 2 butacas y mesa baja de madera'],
+    ['escritorios','🖥️','Escritorios','',''],
+    ['bicis','🚲','Bicicletas','',''],
+  ]],
+];
+const MUEBLES = GRUPOS.flatMap(g => g[1]);
 const DESMONTAJE = [['si','🔧','Sí, desmontadlos y montadlos vosotros'],['desmontar','🪛','Solo desmontar'],['no','✅','No hace falta','Van montados o ya los desmonto yo'],['nose','🤷','No lo sé']];
-const EMBALAJE = [['todo','📦','Embaláis vosotros todo','Cajas, ropa, vajilla…'],['fragil','🍽️','Solo lo frágil','Vajilla, cristal, cuadros…'],['yo','🙋','Lo embalo yo']];
+const EMBALAJE = [['todo','📦','Embaláis vosotros todo','Cajas, ropa, vajilla…'],['fragil','🍽️','Solo lo frágil','Vajilla, cristal, cuadros…'],['yo','🙋','Lo embalo yo'],['nada','👍','No hay nada que embalar','Solo muebles']];
 const CAJAS = [['10','','Menos de 10'],['30','','10 a 30'],['60','','30 a 60'],['mas','','Más de 60'],['nose','','No lo sé']];
 const ESPECIALES = [['piano','🎹','Piano'],['caja-fuerte','🔒','Caja fuerte'],['nevera-americana','🧊','Nevera americana'],['pesado','🏋️','Algo de más de 100 kg'],
   ['plantas','🪴','Plantas grandes'],['arte','🖼️','Cuadros u obras de arte'],['nada','👍','Nada de esto']];
@@ -205,6 +260,7 @@ const ASC = [['si','Sí'],['no','No'],['nose','No lo sé']];
 const PARK = [['puerta','🚚','En la puerta','Se puede parar justo delante'],['30','👣','Muy cerca','A menos de 30 metros'],
   ['100','🚶','Un poco lejos','Entre 30 y 100 metros'],['mas','🥾','Lejos','A más de 100 metros, o calle sin paso'],
   ['nose','🤷','No lo sé','Lo miramos nosotros']];
+const ENTREGA = [['mismo','📦','El mismo día de la recogida'],['espera','🕒','Puede esperar unos días','Así podemos ajustarte el precio']];
 
 // ── Pasos ──
 const PASOS = [
@@ -215,18 +271,20 @@ const PASOS = [
   {id:'desmontaje', render: rDesmontaje},
   {id:'embalaje', render: rEmbalaje},
   {id:'especiales', render: rEspeciales},
-  {id:'origen', render: () => rLugar('origen', '¿Desde dónde te mudas?', 'Pueblo o ciudad. La calle solo si quieres.')},
-  {id:'origen-piso', render: () => rPiso('origen', '¿Cómo es la casa de ahora?')},
-  {id:'origen-camion', render: () => rCamion('origen', '¿Dónde puede parar el camión en la casa de ahora?')},
-  {id:'destino', render: () => rLugar('destino', '¿A dónde te mudas?', 'Si todavía no lo sabes, pulsa «Aún no lo sé».')},
-  {id:'destino-piso', render: () => rPiso('destino', '¿Cómo es la casa nueva?'), saltar: () => S.destinoNoSe},
-  {id:'destino-camion', render: () => rCamion('destino', '¿Dónde puede parar el camión en la casa nueva?'), saltar: () => S.destinoNoSe},
+  {id:'origen', render: () => rLugar('origen', '¿Dónde recogemos las cosas?', 'La dirección donde están ahora los muebles.')},
+  {id:'origen-piso', render: () => rPiso('origen', '¿Cómo es la casa donde recogemos?')},
+  {id:'origen-camion', render: () => rCamion('origen', '¿Dónde puede parar el camión al recoger?')},
+  {id:'destino', render: () => rLugar('destino', '¿Dónde lo llevamos?', 'La dirección donde hay que dejarlo todo. Si todavía no lo sabes, pulsa «Aún no lo sé».')},
+  {id:'destino-piso', render: () => rPiso('destino', '¿Cómo es la casa donde lo llevamos?'), saltar: () => S.destinoNoSe},
+  {id:'destino-camion', render: () => rCamion('destino', '¿Dónde puede parar el camión al entregar?'), saltar: () => S.destinoNoSe},
   {id:'cuando', render: rCuando},
   {id:'fotos', render: rFotos},
-  {id:'datos', render: rDatos, ultimo:true},
+  {id:'datos', render: rDatos},
+  {id:'repaso', render: rRepaso, ultimo:true},
   {id:'hecho', render: rHecho, sinBarra:true, final:true},
 ];
 const visibles = () => PASOS.filter(p => !p.sinBarra && !(p.saltar && p.saltar()));
+const idx = id => PASOS.findIndex(p => p.id === id);
 
 function ir(n, {historial = true} = {}) {
   paso = Math.max(0, Math.min(PASOS.length - 1, n));
@@ -234,8 +292,10 @@ function ir(n, {historial = true} = {}) {
   pintar();
 }
 function siguiente() {
+  if (PASOS[paso].id === 'datos' && !datosOk(true)) { ($('f-nombre').value.trim().length < 2 ? $('f-nombre') : $('f-tel')).focus(); return; }
   let n = paso + 1;
   while (PASOS[n] && PASOS[n].saltar && PASOS[n].saltar()) n++;
+  if (desdeRepaso && (PASOS[paso].id === desdeRepaso || n > idx(desdeRepaso))) { desdeRepaso = ''; ir(idx('repaso')); return; }
   ir(n);
 }
 function anterior() {
@@ -246,6 +306,7 @@ function anterior() {
 }
 window.addEventListener('popstate', e => {
   if (PASOS[paso] && PASOS[paso].final) { history.pushState({paso}, '', ''); return; }   // ya enviado: no volver
+  desdeRepaso = '';
   paso = (e.state && e.state.paso) || 0; pintar();
 });
 
@@ -258,12 +319,13 @@ function pintar() {
   const vis = visibles(), i = vis.indexOf(p);
   $('progress').classList.toggle('on', i >= 0);
   if (i >= 0) {
-    $('progress-label').textContent = `Pregunta ${i + 1} de ${vis.length}`;
+    $('progress-label').textContent = p.ultimo ? 'Último paso: repasar y enviar' : `Pregunta ${i + 1} de ${vis.length - 1}`;
     $('bar').style.width = `${Math.round((i + 1) / vis.length * 100)}%`;
   }
   // Botones de abajo
   $('actions').hidden = !!(p.sinBarra);
-  $('btn-next').textContent = p.ultimo ? 'Enviar solicitud ✓' : 'Siguiente ›';
+  const vuelve = desdeRepaso && (p.id === desdeRepaso || PASOS.slice(paso + 1, idx(desdeRepaso) + 1).every(x => x.saltar && x.saltar()));
+  $('btn-next').textContent = p.ultimo ? 'Enviar solicitud ✓' : vuelve ? 'Volver al repaso ›' : 'Siguiente ›';
   actualizarSiguiente();
   const h = cont.querySelector('h1');
   if (h) { h.setAttribute('tabindex', '-1'); h.focus({preventScroll:true}); }
@@ -271,7 +333,6 @@ function pintar() {
   guardar();
 }
 function actualizarSiguiente() {
-  const p = PASOS[paso];
   $('btn-next').disabled = !!procesando;
 }
 
@@ -295,7 +356,11 @@ function opciones(lista, {multi = false, valor, clase = '', alPulsar}) {
 function titulo(cont, t, ayuda) {
   cont.insertAdjacentHTML('beforeend', `<h1>${esc(t)}</h1>${ayuda ? `<p class="help">${esc(ayuda)}</p>` : ''}`);
 }
-const avanzarLuego = () => setTimeout(siguiente, 280);
+function pintarSinFoco() {    // repinta la pantalla actual sin mover el foco ni el scroll
+  const y = window.scrollY; const cont = $('step'); cont.innerHTML = ''; PASOS[paso].render(cont); window.scrollTo(0, y); actualizarSiguiente();
+}
+// Una opción de una lista: al volver a pulsarla se desmarca. Nunca pasa de pantalla sola.
+const elegir = (obj, campo) => v => { obj[campo] = obj[campo] === v ? '' : v; guardar(); pintarSinFoco(); };
 
 // ── Pantallas ──
 function rInicio(cont) {
@@ -303,12 +368,13 @@ function rInicio(cont) {
   cont.innerHTML = `
     <div class="hero">
       <h1>Pide tu presupuesto de mudanza</h1>
-      <p class="help" style="margin:0">Contesta unas preguntas pulsando botones. Es gratis y tardas unos 2 minutos.</p>
+      <p class="help" style="margin:0">Contesta unas preguntas pulsando botones. Es gratis y tardas unos 3 minutos.</p>
       <ul class="ticks">
         <li>Te contestamos por WhatsApp en el día</li>
         <li>Precio cerrado, sin sorpresas</li>
-        <li>Casi todo es opcional: rellena lo que sepas</li>
+        <li>Al final repasas todo antes de enviarlo</li>
       </ul>
+      <div class="tip" style="margin:14px 0 0"><b>Ten a mano fotos de los muebles</b>Con una foto de cada mueble o de cada habitación te damos el precio mucho antes.</div>
       <button class="btn btn-main btn-block" id="go" type="button">${empezado ? 'Seguir donde lo dejé ›' : 'Empezar ›'}</button>
       ${empezado ? '<button class="btn btn-ghost btn-block" id="reset" type="button">Empezar de nuevo</button>' : ''}
       <a class="btn btn-wa btn-block" href="${waLink(WA_TXT)}" target="_blank" rel="noopener">💬 Prefiero escribir por WhatsApp</a>
@@ -321,54 +387,6 @@ function rInicio(cont) {
   };
 }
 
-function rCasa(cont) {
-  titulo(cont, '¿Cómo de grande es la casa que dejas?', 'Más o menos. Nos ayuda a calcular el camión.');
-  cont.appendChild(opciones(CASAS, {valor:S.casa, clase:'two', alPulsar:v => { S.casa = S.casa === v ? '' : v; guardar(); pintarSinFoco(); if (S.casa) avanzarLuego(); }}));
-}
-function rMuebles(cont) {
-  titulo(cont, '¿Qué muebles grandes hay que llevar?', 'Pon cuántos hay de cada. Si tienes otros o no encajan, descríbelos abajo. Si no lo sabes, sigue adelante y lo vemos en las fotos.');
-  const box = document.createElement('div'); box.className = 'counters';
-  MUEBLES.forEach(([k, em, t]) => {
-    const n = S.muebles[k] || 0;
-    box.insertAdjacentHTML('beforeend', `<div class="counter${n ? ' on' : ''}"><span class="em" aria-hidden="true">${em}</span><span class="ct-label" id="lb-${k}">${esc(t)}</span>
-      <button type="button" class="ct-btn" data-k="${k}" data-d="-1" aria-label="Uno menos de ${esc(t)}" ${n ? '' : 'disabled'}>−</button>
-      <output class="ct-n" aria-labelledby="lb-${k}">${n}</output>
-      <button type="button" class="ct-btn" data-k="${k}" data-d="1" aria-label="Uno más de ${esc(t)}">+</button></div>`);
-  });
-  cont.appendChild(box);
-  cont.insertAdjacentHTML('beforeend', `
-    <div class="field" style="margin-top:16px"><label for="f-muebles">¿Algo más? Descríbelo a tu manera <small>(opcional)</small></label>
-      <textarea id="f-muebles" placeholder="Ej.: armario empotrado de 3 puertas, mueble de salón de 3 metros, litera, escritorio en L, vitrina de cristal…">${esc(S.mueblesTexto)}</textarea></div>`);
-  $('f-muebles').oninput = e => { S.mueblesTexto = e.target.value; guardar(); };
-  box.querySelectorAll('.ct-btn').forEach(b => b.onclick = () => {
-    const k = b.dataset.k; S.muebles[k] = Math.max(0, Math.min(30, (S.muebles[k] || 0) + Number(b.dataset.d)));
-    if (!S.muebles[k]) delete S.muebles[k];
-    guardar(); pintarSinFoco();
-  });
-}
-function rDesmontaje(cont) {
-  titulo(cont, '¿Hay que desmontar y montar muebles?', 'Armarios, camas, canapés, mesas…');
-  cont.appendChild(opciones(DESMONTAJE, {valor:S.desmontaje, alPulsar:v => { S.desmontaje = S.desmontaje === v ? '' : v; guardar(); pintarSinFoco(); if (S.desmontaje) avanzarLuego(); }}));
-}
-function rEmbalaje(cont) {
-  titulo(cont, '¿Quién embala las cajas?', 'Ropa, libros, cocina, vajilla…');
-  cont.appendChild(opciones(EMBALAJE, {valor:S.embalaje, alPulsar:v => {
-    S.embalaje = S.embalaje === v ? '' : v; guardar(); pintarSinFoco(); if (S.embalaje === 'todo') avanzarLuego();
-  }}));
-  if (S.embalaje === 'yo' || S.embalaje === 'fragil') {
-    cont.insertAdjacentHTML('beforeend', `<h2>¿Cuántas cajas te salen más o menos?</h2>`);
-    cont.appendChild(opciones(CAJAS, {valor:S.cajas, clase:'two', alPulsar:v => { S.cajas = S.cajas === v ? '' : v; guardar(); pintarSinFoco(); if (S.cajas) avanzarLuego(); }}));
-  }
-}
-function rEspeciales(cont) {
-  titulo(cont, '¿Hay algo especial?', 'Cosas que necesitan más gente o cuidado. Puedes marcar varias.');
-  cont.appendChild(opciones(ESPECIALES, {multi:true, valor:S.especiales, clase:'two', alPulsar:v => {
-    if (v === 'nada') S.especiales = S.especiales.includes('nada') ? [] : ['nada'];
-    else { S.especiales = S.especiales.filter(x => x !== 'nada'); const i = S.especiales.indexOf(v); i >= 0 ? S.especiales.splice(i, 1) : S.especiales.push(v); }
-    guardar(); pintarSinFoco(); if (v === 'nada' && S.especiales.length) avanzarLuego();
-  }}));
-}
-
 function rServicios(cont) {
   titulo(cont, '¿Qué necesitas?', 'Puedes marcar varias cosas.');
   cont.appendChild(opciones(SERV, {multi:true, valor:S.servicios, alPulsar:(v, b) => {
@@ -377,10 +395,65 @@ function rServicios(cont) {
     b.setAttribute('aria-pressed', i >= 0 ? 'false' : 'true'); guardar();
   }}));
 }
+function rCasa(cont) {
+  titulo(cont, '¿Cómo de grande es la casa?', 'La casa donde están ahora las cosas. Más o menos: nos ayuda a calcular el camión.');
+  cont.appendChild(opciones(CASAS, {valor:S.casa, clase:'two', alPulsar:elegir(S, 'casa')}));
+}
+function rMuebles(cont) {
+  titulo(cont, '¿Qué muebles hay que llevar?', 'Pon cuántos hay de cada uno. Al marcar uno se abre un hueco para las medidas o lo que quieras aclarar.');
+  GRUPOS.forEach(([nombre, lista]) => {
+    cont.insertAdjacentHTML('beforeend', `<h2 class="grupo">${esc(nombre)}</h2>`);
+    const box = document.createElement('div'); box.className = 'counters';
+    lista.forEach(([k, em, t, sub, ej]) => {
+      const n = S.muebles[k] || 0;
+      box.insertAdjacentHTML('beforeend', `<div class="counter${n ? ' on' : ''}">
+        <div class="ct-row"><span class="em" aria-hidden="true">${em}</span><span class="ct-label" id="lb-${k}">${esc(t)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>
+        <button type="button" class="ct-btn" data-k="${k}" data-d="-1" aria-label="Uno menos de ${esc(t)}" ${n ? '' : 'disabled'}>−</button>
+        <output class="ct-n" aria-labelledby="lb-${k}">${n}</output>
+        <button type="button" class="ct-btn" data-k="${k}" data-d="1" aria-label="Uno más de ${esc(t)}">+</button></div>
+        ${n ? `<input class="ct-det" data-det="${k}" aria-label="Detalles de ${esc(t)}" placeholder="${esc(ej || 'Medidas, material o lo que quieras aclarar')}" value="${esc(S.mueblesDetalle[k] || '')}" />` : ''}
+      </div>`);
+    });
+    cont.appendChild(box);
+  });
+  cont.insertAdjacentHTML('beforeend', `
+    <div class="field" style="margin-top:18px"><label for="f-muebles">¿Hay algo que no esté en la lista? <small>(opcional)</small></label>
+      <textarea id="f-muebles" placeholder="Ej.: litera, escritorio en L, cuna, trastero con herramientas…">${esc(S.mueblesTexto)}</textarea></div>`);
+  $('f-muebles').oninput = e => { S.mueblesTexto = e.target.value; guardar(); };
+  cont.querySelectorAll('.ct-det').forEach(i => i.oninput = () => { S.mueblesDetalle[i.dataset.det] = i.value; guardar(); });
+  cont.querySelectorAll('.ct-btn').forEach(b => b.onclick = () => {
+    const k = b.dataset.k, antes = S.muebles[k] || 0;
+    S.muebles[k] = Math.max(0, Math.min(30, antes + Number(b.dataset.d)));
+    if (!S.muebles[k]) delete S.muebles[k];
+    guardar(); pintarSinFoco();
+    // La primera vez que se marca, el cursor va al detalle (en el ordenador; en el móvil no abre el teclado solo)
+    if (!antes && S.muebles[k] && matchMedia('(pointer:fine)').matches) { const d = document.querySelector(`[data-det="${k}"]`); if (d) d.focus({preventScroll:true}); }
+  });
+}
+function rDesmontaje(cont) {
+  titulo(cont, '¿Hay que desmontar y montar muebles?', 'Armarios, camas, canapés, mesas…');
+  cont.appendChild(opciones(DESMONTAJE, {valor:S.desmontaje, alPulsar:elegir(S, 'desmontaje')}));
+}
+function rEmbalaje(cont) {
+  titulo(cont, '¿Quién embala las cajas?', 'Ropa, libros, cocina, vajilla…');
+  cont.appendChild(opciones(EMBALAJE, {valor:S.embalaje, alPulsar:elegir(S, 'embalaje')}));
+  if (S.embalaje === 'yo' || S.embalaje === 'fragil') {
+    cont.insertAdjacentHTML('beforeend', `<h2>¿Cuántas cajas te salen más o menos?</h2>`);
+    cont.appendChild(opciones(CAJAS, {valor:S.cajas, clase:'two', alPulsar:elegir(S, 'cajas')}));
+  }
+}
+function rEspeciales(cont) {
+  titulo(cont, '¿Hay algo especial?', 'Cosas que necesitan más gente o cuidado. Puedes marcar varias.');
+  cont.appendChild(opciones(ESPECIALES, {multi:true, valor:S.especiales, clase:'two', alPulsar:v => {
+    if (v === 'nada') S.especiales = S.especiales.includes('nada') ? [] : ['nada'];
+    else { S.especiales = S.especiales.filter(x => x !== 'nada'); const i = S.especiales.indexOf(v); i >= 0 ? S.especiales.splice(i, 1) : S.especiales.push(v); }
+    guardar(); pintarSinFoco();
+  }}));
+}
 
 function rLugar(k, t, ayuda) {
-  titulo(cont0(), t, ayuda);
-  const d = S[k], cont = $('step');
+  const cont = $('step'), d = S[k];
+  titulo(cont, t, ayuda);
   cont.insertAdjacentHTML('beforeend', `
     <div class="field"><label for="f-pob">Pueblo o ciudad</label>
       <input id="f-pob" list="towns" autocomplete="address-level2" placeholder="Ej.: Huelva" value="${esc(d.poblacion || '')}" /></div>
@@ -391,60 +464,53 @@ function rLugar(k, t, ayuda) {
   $('f-calle').oninput = e => { d.calle = e.target.value; guardar(); };
   if (k === 'destino') {
     const b = opciones([['nose', '🤷', 'Aún no lo sé', 'Te preguntamos más adelante']], {valor: S.destinoNoSe ? 'nose' : '', alPulsar: () => {
-      S.destinoNoSe = !S.destinoNoSe; marcarNoSe(); guardar(); if (S.destinoNoSe) avanzarLuego();
+      S.destinoNoSe = !S.destinoNoSe; marcarNoSe(); guardar();
     }});
     b.style.marginTop = '4px'; b.id = 'nose-box'; cont.appendChild(b);
   }
   function marcarNoSe() { const x = document.querySelector('#nose-box .opt'); if (x) x.setAttribute('aria-pressed', S.destinoNoSe ? 'true' : 'false'); }
 }
-function cont0() { return $('step'); }
-
 function rPiso(k, t) {
   const cont = $('step'), d = S[k];
   titulo(cont, t, 'Pulsa una opción. Si no lo sabes, sigue adelante.');
   cont.insertAdjacentHTML('beforeend', '<h2>¿Qué piso es?</h2>');
-  cont.appendChild(opciones(PISOS.map(([v, l]) => [v, '', l]), {valor:d.piso, clase:'three', alPulsar:v => {
-    d.piso = d.piso === v ? '' : v; if (d.piso === 'bajo') d.ascensor = d.ascensor || ''; guardar(); pintarSinFoco();
-    if (d.piso === 'bajo') avanzarLuego();
-  }}));
+  cont.appendChild(opciones(PISOS.map(([v, l]) => [v, '', l]), {valor:d.piso, clase:'three', alPulsar:elegir(d, 'piso')}));
   if (d.piso !== 'bajo') {
     cont.insertAdjacentHTML('beforeend', '<h2>¿Hay ascensor?</h2>');
-    cont.appendChild(opciones(ASC.map(([v, l]) => [v, '', l]), {valor:d.ascensor, clase:'three', alPulsar:v => {
-      d.ascensor = d.ascensor === v ? '' : v; guardar(); pintarSinFoco();
-      if (d.ascensor && d.piso) avanzarLuego();
-    }}));
+    cont.appendChild(opciones(ASC.map(([v, l]) => [v, '', l]), {valor:d.ascensor, clase:'three', alPulsar:elegir(d, 'ascensor')}));
   }
 }
-function pintarSinFoco() {    // repinta la pantalla actual sin mover el foco ni el scroll
-  const y = window.scrollY; const cont = $('step'); cont.innerHTML = ''; PASOS[paso].render(cont); window.scrollTo(0, y); actualizarSiguiente();
-}
-
 function rCamion(k, t) {
   const cont = $('step'), d = S[k];
   titulo(cont, t, 'Nos ayuda a saber cuánto hay que andar con los muebles.');
-  cont.appendChild(opciones(PARK, {valor:d.aparcamiento, alPulsar:v => {
-    d.aparcamiento = d.aparcamiento === v ? '' : v; guardar(); pintarSinFoco(); if (d.aparcamiento) avanzarLuego();
-  }}));
+  cont.appendChild(opciones(PARK, {valor:d.aparcamiento, alPulsar:elegir(d, 'aparcamiento')}));
 }
-
+// Entrega en otro pueblo: preguntamos si puede esperar (permite juntarla con otro viaje)
+const otroPueblo = () => !S.destinoNoSe && (S.origen.poblacion || '').trim() && (S.destino.poblacion || '').trim()
+  && S.origen.poblacion.trim().toLowerCase() !== S.destino.poblacion.trim().toLowerCase();
 function rCuando(cont) {
   const hoy = new Date(); const min = new Date(hoy.getTime() - hoy.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  titulo(cont, '¿Para cuándo es?', 'Una fecha aproximada nos vale.');
+  titulo(cont, '¿Qué día recogemos?', 'Una fecha aproximada nos vale.');
   cont.appendChild(opciones([['pronto', '⚡', 'Lo antes posible'], ['nosabe', '🗓️', 'Aún no lo sé']], {valor:S.fecha ? '' : S.cuando, clase:'two', alPulsar:v => {
-    S.cuando = S.cuando === v ? '' : v; if (S.cuando) S.fecha = ''; guardar(); pintarSinFoco(); if (S.cuando) avanzarLuego();
+    S.cuando = S.cuando === v ? '' : v; if (S.cuando) S.fecha = ''; guardar(); pintarSinFoco();
   }}));
   cont.insertAdjacentHTML('beforeend', `
     <h2>O elige un día</h2>
-    <div class="field"><label for="f-fecha" class="sr">Fecha</label><input id="f-fecha" type="date" min="${min}" value="${esc(S.fecha)}" /></div>`);
+    <div class="field"><label for="f-fecha" class="sr">Fecha de recogida</label><input id="f-fecha" type="date" min="${min}" value="${esc(S.fecha)}" /></div>`);
   $('f-fecha').onchange = e => { S.fecha = e.target.value; if (S.fecha) S.cuando = ''; guardar(); pintarSinFoco(); };
   if (S.fecha) cont.appendChild(opciones([['flex', '🤝', 'Puedo cambiar el día si hace falta']], {valor:S.flexible ? 'flex' : '', alPulsar:(v, b) => {
     S.flexible = !S.flexible; b.setAttribute('aria-pressed', S.flexible ? 'true' : 'false'); guardar();
   }}));
+  if (otroPueblo()) {
+    cont.insertAdjacentHTML('beforeend', `<h2>¿Y la entrega en ${esc(S.destino.poblacion.trim())}?</h2>`);
+    cont.appendChild(opciones(ENTREGA, {valor:S.entrega, alPulsar:elegir(S, 'entrega')}));
+  }
 }
 
 function rFotos(cont) {
-  titulo(cont, 'Haz fotos de lo que hay que llevar', 'Una foto de cada habitación y de los muebles grandes. Con eso te damos un precio cerrado.');
+  titulo(cont, 'Fotos de lo que hay que llevar', 'Con fotos te damos un precio cerrado sin tener que ir a verlo.');
   cont.insertAdjacentHTML('beforeend', `
+    <div class="tip"><b>Cómo hacerlas</b>Una foto de cada mueble o de cada habitación. Debajo de cada foto escribe qué es y si va todo lo que se ve.</div>
     <div class="photo-btns">
       <button class="opt photo-btn" id="b-cam" type="button"><span class="em" aria-hidden="true">📷</span><span>Hacer fotos</span></button>
       <button class="opt photo-btn" id="b-gal" type="button"><span class="em" aria-hidden="true">🖼️</span><span>Elegir de la galería</span></button>
@@ -454,15 +520,20 @@ function rFotos(cont) {
   $('b-cam').onclick = () => $('in-camera').click();
   $('b-gal').onclick = () => $('in-gallery').click();
   const w = opciones([['wa', '💬', 'Prefiero mandarlas por WhatsApp', 'Las pides cuando te contestemos']], {valor:S.fotosWhatsapp ? 'wa' : '', alPulsar:(v, b) => {
-    S.fotosWhatsapp = !S.fotosWhatsapp; b.setAttribute('aria-pressed', S.fotosWhatsapp ? 'true' : 'false'); guardar(); if (S.fotosWhatsapp && !fotos.length) avanzarLuego();
+    S.fotosWhatsapp = !S.fotosWhatsapp; b.setAttribute('aria-pressed', S.fotosWhatsapp ? 'true' : 'false'); guardar();
   }});
   w.style.marginTop = '16px'; cont.appendChild(w);
   pintarFotos();
 }
 function pintarFotos() {
   const th = $('thumbs'), st = $('fotos-estado'); if (!th) return;
-  th.innerHTML = fotos.map(f => `<div class="thumb"><img src="${f.data}" alt="Foto añadida" /><button type="button" data-del="${f.id}" aria-label="Quitar esta foto">✕</button></div>`).join('');
+  th.innerHTML = fotos.map((f, i) => `<div class="thumb">
+      <div class="thumb-img"><img src="${f.data}" alt="Foto ${i + 1}" /><button type="button" data-del="${f.id}" aria-label="Quitar la foto ${i + 1}">✕</button></div>
+      <div><label for="nota-${f.id}">¿Qué sale en la foto ${i + 1}?</label>
+        <textarea id="nota-${f.id}" data-nota="${f.id}" placeholder="Ej.: los 3 sofás del salón, van todos">${esc(f.nota || '')}</textarea></div>
+    </div>`).join('');
   th.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { fotos = fotos.filter(f => f.id !== +b.dataset.del); pintarFotos(); });
+  th.querySelectorAll('[data-nota]').forEach(t => t.oninput = () => { const f = fotos.find(x => x.id === +t.dataset.nota); if (f) f.nota = t.value; });
   st.innerHTML = (procesando ? `<p class="busy">Preparando ${procesando} foto${procesando > 1 ? 's' : ''}…</p>` : '') +
     (fotos.length ? `<p class="count">✓ ${fotos.length} foto${fotos.length > 1 ? 's' : ''} lista${fotos.length > 1 ? 's' : ''}${fotos.length >= MAX_FOTOS ? ' (máximo)' : ''}</p>` : '');
   actualizarSiguiente();
@@ -473,7 +544,7 @@ async function anadirFotos(files) {
   if (!lista.length) { if (fotos.length >= MAX_FOTOS) alert0(`Como máximo ${MAX_FOTOS} fotos. El resto mándalas por WhatsApp.`); return; }
   procesando += lista.length; pintarFotos();
   for (const f of lista) {
-    try { fotos.push({id: ++fid, data: await reducir(f)}); } catch (e) { alert0('Una foto no se ha podido abrir. Prueba con otra o mándala por WhatsApp.'); }
+    try { fotos.push({id: ++fid, data: await reducir(f), nota: ''}); } catch (e) { alert0('Una foto no se ha podido abrir. Prueba con otra o mándala por WhatsApp.'); }
     procesando--; pintarFotos();
   }
 }
@@ -500,7 +571,7 @@ function datosOk(mostrar) {
   const n = (S.nombre || '').trim(), d = (S.telefono || '').replace(/\D/g, '');
   const errN = n.length < 2 ? 'Escribe tu nombre.' : '';
   const errT = d.length < 9 ? 'Escribe tu teléfono (mínimo 9 números).' : '';
-  if (mostrar) { $('e-nombre').textContent = errN; $('e-tel').textContent = errT; }
+  if (mostrar && $('e-nombre')) { $('e-nombre').textContent = errN; $('e-tel').textContent = errT; }
   return !errN && !errT;
 }
 function rDatos(cont) {
@@ -513,13 +584,53 @@ function rDatos(cont) {
       <input id="f-tel" type="tel" inputmode="tel" autocomplete="tel" value="${esc(S.telefono)}" placeholder="Ej.: 600 123 456" />
       <div class="err" id="e-tel" role="alert"></div></div>
     <div class="field"><label for="f-com">¿Algo más que debamos saber? <small>(opcional)</small></label>
-      <textarea id="f-com" placeholder="Ej.: un piano, un armario muy grande, una nevera americana, si hay que guardar cosas…">${esc(S.comentario)}</textarea></div>
-    <p class="privacy">Usamos tus datos solo para contestarte con el presupuesto. No los compartimos con nadie.</p>
-    <div id="envio-error"></div>`);
-  $('f-nombre').oninput = e => { S.nombre = e.target.value; guardar(); actualizarSiguiente(); };
-  $('f-tel').oninput = e => { S.telefono = e.target.value; guardar(); actualizarSiguiente(); };
+      <textarea id="f-com" placeholder="Ej.: hay que guardar cosas unos días, el portal es estrecho, hay que vaciar un trastero…">${esc(S.comentario)}</textarea></div>
+    <p class="privacy">Usamos tus datos solo para contestarte con el presupuesto. No los compartimos con nadie.</p>`);
+  $('f-nombre').oninput = e => { S.nombre = e.target.value; guardar(); };
+  $('f-tel').oninput = e => { S.telefono = e.target.value; guardar(); };
   $('f-com').oninput = e => { S.comentario = e.target.value; guardar(); };
   ['f-nombre', 'f-tel'].forEach(id => $(id).addEventListener('blur', () => datosOk(true)));
+}
+
+// ── Repaso: todo lo contestado, con «Cambiar» para volver a esa pregunta ──
+const txt = (lista, v) => (lista.find(x => x[0] === v) || [])[2] || '';
+const txt2 = (lista, v) => (lista.find(x => x[0] === v) || [])[1] || '';
+function ladoTxt(d) {
+  const piso = txt2(PISOS, d.piso), asc = d.piso && d.piso !== 'bajo' ? ({si:'con ascensor', no:'sin ascensor'}[d.ascensor] || '') : '';
+  const camion = txt(PARK, d.aparcamiento);
+  return [[d.calle, d.poblacion].filter(Boolean).join(', '), [piso, asc].filter(Boolean).join(', '), camion ? `Camión: ${camion.toLowerCase()}` : '']
+    .filter(Boolean).join('\n');
+}
+function rRepaso(cont) {
+  titulo(cont, 'Repasa tu solicitud', 'Si algo no está bien, pulsa «Cambiar». Cuando esté todo, pulsa «Enviar solicitud».');
+  const muebles = MUEBLES.filter(m => S.muebles[m[0]]).map(([k, , t]) => {
+    const det = (S.mueblesDetalle[k] || '').trim();
+    return `${t}: ${S.muebles[k]}${det ? ` (${det})` : ''}`;
+  });
+  if ((S.mueblesTexto || '').trim()) muebles.push(S.mueblesTexto.trim());
+  const fecha = S.fecha ? new Date(S.fecha + 'T12:00').toLocaleDateString('es-ES', {weekday:'long', day:'numeric', month:'long'}) + (S.flexible ? ' (puedes cambiarlo)' : '')
+    : ({pronto:'Lo antes posible', nosabe:'Aún no lo sabes'}[S.cuando] || '');
+  const entrega = otroPueblo() ? txt(ENTREGA, S.entrega) : '';
+  const notas = fotos.filter(f => (f.nota || '').trim()).length;
+  const filas = [
+    ['servicios', 'Qué necesitas', S.servicios.map(v => txt(SERV, v)).join(', ')],
+    ['casa', 'Casa', txt(CASAS, S.casa)],
+    ['muebles', 'Muebles', muebles.join('\n')],
+    ['desmontaje', 'Desmontaje', txt(DESMONTAJE, S.desmontaje)],
+    ['embalaje', 'Embalaje', [txt(EMBALAJE, S.embalaje), S.cajas && (S.embalaje === 'yo' || S.embalaje === 'fragil') ? `${txt(CAJAS, S.cajas)} cajas` : ''].filter(Boolean).join(' · ')],
+    ['especiales', 'Algo especial', S.especiales.map(v => txt(ESPECIALES, v)).join(', ')],
+    ['origen', 'Recogida', ladoTxt(S.origen)],
+    ['destino', 'Entrega', S.destinoNoSe ? 'Aún no lo sabes' : ladoTxt(S.destino)],
+    ['cuando', 'Día de recogida', [fecha, entrega && `Entrega: ${entrega.toLowerCase()}`].filter(Boolean).join('\n')],
+    ['fotos', 'Fotos', fotos.length ? `${fotos.length} foto${fotos.length > 1 ? 's' : ''}${notas < fotos.length ? ` · ${fotos.length - notas} sin explicar qué sale` : ''}` : S.fotosWhatsapp ? 'Las mandas por WhatsApp' : ''],
+    ['datos', 'Tus datos', [S.nombre.trim(), S.telefono.trim(), (S.comentario || '').trim()].filter(Boolean).join('\n')],
+  ].filter(([id]) => !(PASOS[idx(id)].saltar && PASOS[idx(id)].saltar()));
+  const vacio = {fotos:'Sin fotos (te las pediremos por WhatsApp)', muebles:'No has marcado ninguno'};
+  cont.insertAdjacentHTML('beforeend', `<dl class="rev">${filas.map(([id, t, v]) => `
+    <div class="rev-item"><div><dt>${esc(t)}</dt><dd class="${v ? '' : 'vacio'}">${esc(v || vacio[id] || 'Sin contestar')}</dd></div>
+      <button type="button" data-ir="${id}" aria-label="Cambiar ${esc(t.toLowerCase())}">Cambiar</button></div>`).join('')}</dl>
+    <div id="envio-error"></div>`);
+  cont.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => { desdeRepaso = HASTA[b.dataset.ir] || b.dataset.ir; ir(idx(b.dataset.ir)); });
 }
 
 function rHecho(cont) {
@@ -530,6 +641,7 @@ function rHecho(cont) {
       <h1>¡Recibido${n ? ', ' + n : ''}!</h1>
       <p class="help">Te escribimos por WhatsApp al <strong>${esc(S.telefono)}</strong> con el presupuesto, normalmente en el mismo día.</p>
       ${S.fotosWhatsapp || !fotos.length ? `<p class="help">Si tienes fotos de los muebles, mándanoslas por WhatsApp y te damos el precio antes.</p>` : ''}
+      <p class="help"><strong>¿Te has dejado algo o te has equivocado?</strong> No hace falta enviarla otra vez: dínoslo por WhatsApp y lo cambiamos.</p>
       <a class="btn btn-wa btn-block" href="${waLink(`Hola, soy ${(S.nombre || '').trim()}. Acabo de pedir presupuesto en la web 🙂`)}" target="_blank" rel="noopener">💬 Abrir WhatsApp</a>
     </div>
     <p class="slogan">«Cambia de casa, no de humor»</p>`;
@@ -538,18 +650,20 @@ function rHecho(cont) {
 // ── Envío ──
 async function enviar() {
   if (enviando) return;
-  if (!datosOk(true)) { ($('f-nombre').value.trim().length < 2 ? $('f-nombre') : $('f-tel')).focus(); return; }
+  if (!datosOk(false)) { desdeRepaso = 'datos'; ir(idx('datos')); return; }
   enviando = true;
   $('sending-txt').textContent = fotos.length ? `Enviando tu solicitud y ${fotos.length} foto${fotos.length > 1 ? 's' : ''}…` : 'Enviando tu solicitud…';
   $('sending').classList.add('on');
   const lado = d => ({poblacion: d.poblacion || '', calle: d.calle || '', piso: d.piso || '', ascensor: d.ascensor || '', aparcamiento: d.aparcamiento || ''});
+  const detalles = {};
+  Object.keys(S.muebles).forEach(k => { const t = (S.mueblesDetalle[k] || '').trim(); if (t) detalles[k] = t; });
   const body = {
     web: $('hp-web').value, t: Date.now() - T0,
     servicios: S.servicios, origen: lado(S.origen), destino: S.destinoNoSe ? {} : lado(S.destino),
-    inventario: {casa: S.casa, muebles: S.muebles, otros: S.mueblesTexto, desmontaje: S.desmontaje, embalaje: S.embalaje, cajas: S.cajas, especiales: S.especiales},
-    cuando: S.cuando, fecha: S.fecha, flexible: S.flexible, fotos_whatsapp: S.fotosWhatsapp,
+    inventario: {casa: S.casa, muebles: S.muebles, detalles, otros: S.mueblesTexto, desmontaje: S.desmontaje, embalaje: S.embalaje, cajas: S.cajas, especiales: S.especiales},
+    cuando: S.cuando, fecha: S.fecha, flexible: S.flexible, entrega: otroPueblo() ? S.entrega : '', fotos_whatsapp: S.fotosWhatsapp,
     nombre: S.nombre, telefono: S.telefono, comentario: S.comentario,
-    fotos: fotos.map(f => f.data),
+    fotos: fotos.map(f => ({data: f.data, nota: (f.nota || '').trim()})),
   };
   let error = '';
   try {
@@ -573,7 +687,7 @@ async function enviar() {
 
 // ── Arranque ──
 $('btn-next').onclick = () => PASOS[paso].ultimo ? enviar() : siguiente();
-$('btn-back').onclick = anterior;
+$('btn-back').onclick = () => { desdeRepaso = ''; anterior(); };
 $('wa-help').href = waLink(WA_TXT);
 history.replaceState({paso: 0}, '', '');
 pintar();

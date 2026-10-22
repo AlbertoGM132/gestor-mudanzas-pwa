@@ -201,7 +201,7 @@ function renderSolicitudes(){
       <div class="job-card-bar" style="background:${fu?'var(--amber)':'var(--indigo)'}"></div>
       <div class="job-card-body">
         <div class="job-card-top">
-          <div class="job-client-name">${esc(j.clientName||'Sin nombre')}${j.source==='web'?' <span class="web-tag">🌐 Web</span>':''}</div>
+          <div class="job-client-name">${esc(j.clientName||'Sin nombre')}${j.source==='web'?' <span class="web-tag">🌐 Web</span>':''}${j.possibleDuplicateOf?' <span class="web-tag dup-tag">⚠️ ¿Repetida?</span>':''}</div>
           ${j.price?`<div class="status-badge" style="background:var(--accentSoft);color:var(--accent)">${fmt(j.price)} €</div>`
             :j.proposal&&j.proposal.price!=null?`<div class="status-badge" style="background:var(--greenSoft);color:var(--green)">${j.proposal.by==='Calculadora web'?'🧮':'🤖'} ${numEs(j.proposal.price)} €</div>`:''}
         </div>
@@ -504,7 +504,7 @@ function renderDetailView(){
     </div>
     ${(job.materials||[]).length?`<div class="detail-section"><div class="detail-section-title">📦 Material planificado</div><div class="mat-tags-row">${job.materials.map(m=>`<span class="mat-tag active">${esc(m)}</span>`).join('')}</div></div>`:''}
     ${job.notes?`<div class="detail-section"><div class="detail-section-title">📝 Notas</div><div class="notes-text">${esc(job.notes)}</div></div>`:''}
-    ${(job.photos||[]).length?`<div class="detail-section"><div class="detail-section-title">📷 Fotos (${job.photos.length})</div><div class="photo-grid">${job.photos.map(p=>`<img class="photo-thumb" src="${p.url||p.localSrc}" loading="lazy" onclick="openLb('${p.url||p.localSrc}')" />`).join('')}</div></div>`:''}
+    ${(job.photos||[]).length?`<div class="detail-section"><div class="detail-section-title">📷 Fotos (${job.photos.length})</div><div class="photo-grid">${job.photos.map(p=>`<figure class="photo-fig"><img class="photo-thumb" src="${esc(p.url||p.localSrc)}" loading="lazy" onclick="openLb(this.src)" alt="${esc(p.caption||'Foto del trabajo')}" />${p.caption?`<figcaption>${esc(p.caption)}</figcaption>`:''}</figure>`).join('')}</div></div>`:''}
     ${profitSection}
     ${isCompleted
       ? `<div class="completed-badge">✅ Trabajo completado y cerrado</div>`
@@ -558,7 +558,8 @@ function clientSummary(j){
   const fecha=j.date?`📅 ${fmtDateEs(j.date)}`:j.desiredDate?`📅 Le viene bien: ${fmtDateEs(j.desiredDate)}`
     :j.desiredWhen==='pronto'?'📅 Lo antes posible':j.desiredWhen==='nosabe'?'📅 Aún no sabe la fecha':'';
   const inv=j.inventory||{};
-  const muebles=Object.entries(inv.muebles||{}).map(([k,n])=>`${n} ${k}`).join(', ');
+  const det=k=>(inv.detalles||{})[k]?` (${inv.detalles[k]})`:'';
+  const muebles=Object.entries(inv.muebles||{}).map(([k,n])=>`${n} ${k}${det(k)}`).join(', ');
   return [
     (j.services||[]).length?`📦 ${j.services.join(', ')}`:'',
     inv.casa||muebles?`🏠 ${[inv.casa,muebles].filter(Boolean).join(' · ')}`:'',
@@ -675,7 +676,7 @@ function quoteSummary(j){
   const town=a=>String(a||'').split(',').map(x=>x.trim()).filter(Boolean).pop()||'';
   const cap=t=>t?t[0].toUpperCase()+t.slice(1):t;
   // Muebles: «2 canapés, armario de 4 puertas…» (sin el «1»)
-  const muebles=Object.entries(inv.muebles||{}).map(([k,n])=>Number(n)>1?`${n} ${k}`:k);
+  const muebles=Object.entries(inv.muebles||{}).map(([k,n])=>(Number(n)>1?`${n} ${k}`:k)+((inv.detalles||{})[k]?` (${inv.detalles[k]})`:''));
   if(inv.otros)muebles.push(String(inv.otros).trim().replace(/^./,c=>c.toLowerCase()).replace(/[.\s]+$/,''));
   const casa=inv.casa?(/estudio|chalet/i.test(inv.casa)?inv.casa:`Casa de ${inv.casa}`):'';
   if(casa||muebles.length)out.push(`${casa||'Muebles'}${muebles.length?`: ${listaEs(muebles).replace(', y ',' y ')}`:''}`);

@@ -91,8 +91,8 @@ def test_estimar_guarda_solicitud_y_rango():
     assert d["proposal"]["by"] == "Calculadora web" and d["proposal"]["price"] >= e["min"]
     assert d["webEstimate"]["min"] == e["min"]
     assert d["originAccess"] == {"parking": "100"} and d["destinAccess"] == {"parking": "puerta"}
-    assert d["inventory"]["muebles"] == {"sofá": 1, "armarios de 4 puertas": 2}
-    assert "bici" in d["inventory"]["otros"]
+    assert d["inventory"]["muebles"] == {"sofá": 1, "armarios de 4 puertas": 2, "bicicleta": 1}   # la bici ya tiene contador propio
+    assert "bici" not in d["inventory"].get("otros", "")
     assert "🧮 Calculadora web" in d["notes"] and "calculadora de la web" in d["notes"]
     assert d["email"] == "lucia@example.com" and len(d["photos"]) == 1
     assert "Desmontaje y montaje" in d["services"]
@@ -159,3 +159,44 @@ def test_asistente_sin_nombres():
     from web_conocimiento import CONOCIMIENTO
     for n in ("Alberto", "Cristian"):
         assert n not in CONOCIMIENTO
+
+
+def test_formulario_detalles_pies_de_foto_y_entrega():
+    """El caso de Virginia: somieres, medidas de los sofás, qué sale en cada foto y entrega que puede esperar."""
+    repo = Repo()
+    body = {"nombre": "Virginia", "telefono": "600000000", "t": 9000, "servicios": ["porte"],
+            "origen": {"poblacion": "Nuevo Portil", "piso": "bajo", "aparcamiento": "puerta"},
+            "destino": {"poblacion": "Madrid", "piso": "3", "ascensor": "si"},
+            "inventario": {"muebles": {"sofas": 5, "somieres": 5, "jardin": 4},
+                           "detalles": {"sofas": "3 de 160 cm y 2 de 120 cm", "somieres": "90 × 190, sin colchón", "camas": "no marcado"}},
+            "entrega": "espera",
+            "fotos": [{"data": jpeg_b64(), "nota": "los 3 sofás del salón"}, jpeg_b64()]}
+    r = fw.procesar(body, "1", repo)
+    d = repo.creados[0]
+    assert r["ok"] and r["fotos"] == 2
+    assert d["inventory"]["muebles"] == {"sofás": 5, "somieres o bases con patas": 5, "muebles de jardín o terraza": 4}
+    assert d["inventory"]["detalles"] == {"sofás": "3 de 160 cm y 2 de 120 cm", "somieres o bases con patas": "90 × 190, sin colchón"}
+    assert "5 sofás (3 de 160 cm y 2 de 120 cm)" in d["notes"]
+    assert "🚚 Entrega: puede esperar unos días" in d["notes"] and d["inventory"]["entrega"] == "puede esperar unos días"
+    assert d["photos"][0]["caption"] == "los 3 sofás del salón" and "caption" not in d["photos"][1]
+    assert "1) los 3 sofás del salón" in d["notes"]
+    assert "possibleDuplicateOf" not in d
+
+
+def test_formulario_avisa_de_posible_repetida():
+    class R(Repo):
+        def reciente_mismo_telefono(s, tel, desde):
+            assert tel == "600 000 000"
+            return {"id": "PREV", "nombre": "Virginia", "fecha": "el 21/10"}
+    repo = R()
+    fw.procesar({"nombre": "Virginia", "telefono": "600000000", "t": 9000}, "1", repo)
+    d = repo.creados[0]
+    assert d["possibleDuplicateOf"] == "PREV" and d["notes"].startswith("⚠️ PUEDE ESTAR REPETIDA") and "el 21/10" in d["notes"]
+
+
+def test_formulario_sigue_si_falla_buscar_repetidas():
+    class R(Repo):
+        def reciente_mismo_telefono(s, *a): raise RuntimeError("sin red")
+    repo = R()
+    assert fw.procesar({"nombre": "Ana", "telefono": "600000000", "t": 9000}, "1", repo)["ok"]
+    assert "possibleDuplicateOf" not in repo.creados[0]
