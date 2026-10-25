@@ -515,3 +515,59 @@ def _repo_factory():
 def mudanzapro_mcp(req: https_fn.Request) -> https_fn.Response:
     status, body = handle_http(req.method, req.path, req.get_data(), MCP_KEY.value, _repo_factory, req.headers)
     return https_fn.Response(body or "", status=status, mimetype="application/json")
+
+
+# ── Despertador del conector ───────────────────────────────
+# Las tareas programadas de Claude abren el conector al empezar y, si la función
+# está «dormida» (arranque en frío de varios segundos), la conexión caduca y la
+# tarea se queda sin herramientas. Esto la despierta unos minutos antes de cada
+# tarea (6:47 redes, xx:53 presupuestos, 19:56 parte) con una sesión MCP real.
+DESPERTAR_CRON = "43,49 6-20 * * *"
+
+
+def url_conector(proyecto):
+    return f"https://europe-west1-{proyecto}.cloudfunctions.net/mudanzapro_mcp"
+
+
+def despertar(url, clave, abrir=None, intentos=3):
+    """Hace initialize + tools/list contra el conector. Devuelve cuántas
+    herramientas ofrece (0 si no responde tras los intentos)."""
+    import time
+    import urllib.request
+    abrir = abrir or (lambda r: urllib.request.urlopen(r, timeout=50))
+    cuerpo = json.dumps([
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+         "params": {"protocolVersion": DEFAULT_PROTOCOL, "capabilities": {},
+                    "clientInfo": {"name": "despertador", "version": "1"}}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    ]).encode()
+    for intento in range(1, intentos + 1):
+        t0 = time.time()
+        try:
+            req = urllib.request.Request(url, data=cuerpo, method="POST", headers={
+                "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+                "Authorization": f"Bearer {clave}"})
+            with abrir(req) as r:
+                datos = json.loads(r.read() or b"[]")
+            herramientas = next((len(m["result"]["tools"]) for m in datos
+                                 if m.get("id") == 2 and "result" in m), 0)
+            print(f"despertar_mcp: intento {intento}, {time.time() - t0:.1f} s, {herramientas} herramientas")
+            if herramientas:
+                return herramientas
+        except Exception as e:  # noqa: BLE001
+            print(f"despertar_mcp: intento {intento} falló tras {time.time() - t0:.1f} s: {e!r}")
+    return 0
+
+
+try:
+    from firebase_functions import scheduler_fn
+
+    @scheduler_fn.on_schedule(schedule=DESPERTAR_CRON, timezone=scheduler_fn.Timezone("Europe/Madrid"),
+                              region="europe-west1", memory=options.MemoryOption.MB_256,
+                              timeout_sec=180, secrets=[MCP_KEY])
+    def despertar_mcp(event: scheduler_fn.ScheduledEvent) -> None:
+        import os
+        proyecto = os.environ.get("GCLOUD_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT") or "smartsonubalogictis"
+        despertar(url_conector(proyecto), MCP_KEY.value)
+except ImportError:  # pruebas locales sin firebase_functions
+    pass
