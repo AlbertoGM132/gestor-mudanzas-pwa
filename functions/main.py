@@ -336,9 +336,9 @@ def generar_presupuesto(req: https_fn.Request) -> https_fn.Response:
         )
 
 
-# ── Conector MCP para Claude (solo lectura) ───────────────
+# ── Conector MCP para Claude (y su despertador antes de las tareas programadas) ──
 # Firebase solo despliega las funciones visibles en main.py
-from mcp_mudanzapro import mudanzapro_mcp  # noqa: E402,F401
+from mcp_mudanzapro import mudanzapro_mcp, despertar_mcp  # noqa: E402,F401
 
 # ── Formulario público «Pide tu presupuesto» (/presupuesto) ──
 from formulario_web import solicitud_publica  # noqa: E402,F401
