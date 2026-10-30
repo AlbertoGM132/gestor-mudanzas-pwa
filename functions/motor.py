@@ -224,13 +224,24 @@ def preparar_rutas(entrada, rutas, guardadas=None):
     for lado in ("origen", "destino"):
         d = entrada[lado]
         c = d.get("coords")
+        nombre = "carga" if lado == "origen" else "descarga"
         if not c and rutas:
-            try:
-                c = rutas.geocodificar(d.get("direccion"))
-            except Exception as e:  # noqa: BLE001
-                print("motor geocodificar:", repr(e))
+            # Primero la dirección entera; si no aparece (calle mal escrita o que no está en el mapa),
+            # el centro del pueblo: para el precio basta y se avisa.
+            direccion = (d.get("direccion") or "").strip()
+            pueblo = direccion.split(",")[-1].strip() if "," in direccion else ""
+            for intento in [direccion] + ([pueblo] if pueblo and pueblo != direccion else []):
+                try:
+                    c = rutas.geocodificar(intento)
+                except Exception as e:  # noqa: BLE001
+                    print("motor geocodificar:", repr(e))
+                    c = None
+                if c:
+                    if intento == pueblo:
+                        avisos.append(f"No encuentro la calle de la {nombre}: calculo desde el centro de {pueblo}")
+                    break
         if not c:
-            avisos.append(f"No encuentro la dirección de {'carga' if lado == 'origen' else 'descarga'}")
+            avisos.append(f"No encuentro la dirección de {nombre}")
             return None, coords, avisos
         coords[lado] = c
     try:
@@ -444,8 +455,11 @@ def revisar(e, legs, r, c):
     if e["tipo"] == "casa" and e["items"] and e.get("casa") and r:
         lo, hi = c["casa_m3"][e["casa"]]
         bruto = sum(c["vol"].get(k, 0.4) * n for k, n in e["items"].items())
-        if bruto > hi * 1.4 or bruto < lo * 0.6:
-            revisar_.append(f"Los muebles marcados ({bruto:.0f} m³) no cuadran con una casa de ese tamaño")
+        if bruto < lo * 0.6:
+            revisar_.append(f"Los muebles marcados suman {bruto:.0f} m³; para esa casa cuento al menos {lo} m³ "
+                            "(lo que no se marca: cajas, lámparas, cocina…)")
+        elif bruto > hi * 1.4:
+            revisar_.append(f"Los muebles marcados suman {bruto:.0f} m³: mucho para una casa de ese tamaño")
     if a_mano:
         return "a_mano", a_mano + revisar_ + supuestos, supuestos
     if revisar_ or supuestos:
@@ -494,7 +508,9 @@ def proponer(job, tarifas=None, rutas=None, otro_trabajo_ese_dia=False, ahora=No
         except Exception as ex:  # noqa: BLE001
             avisos.append(f"Error del motor: {ex}")
     etiqueta, motivos, _ = revisar(e, legs, r, c)
-    motivos = avisos + motivos
+    if etiqueta == "lista" and avisos:
+        etiqueta = "revisar"
+    motivos = avisos + [m for m in motivos if not (avisos and m.startswith("Sin ruta"))]
     prop = {"by": "Motor", "version": VERSION, "at": (ahora or datetime.now(timezone.utc)).isoformat(),
             "etiqueta": etiqueta, "motivos": motivos, "entrada": e,
             "rutas": {"legs": legs, "coords": coords} if legs else None,
