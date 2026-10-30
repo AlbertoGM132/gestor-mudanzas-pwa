@@ -147,15 +147,19 @@ let finEntries=[]; // loaded from Firestore
 //  VIEW ROUTER + BOTTOM NAV
 // ════════════════════════════════════════
 function showView(name){
+  // En PC ancho el calendario siempre va con el día al lado
+  if(name==='cal'&&isWide()){if(!selDate)selDate=todayStr();renderDayView();name='day';}
   curView=name;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   $('view-'+name).classList.add('active');
   const hasGlobalHeader=['cal','tarifas','finanzas','solicitudes'].includes(name);
-  $('g-header').style.display=hasGlobalHeader?'flex':'none';
-  $('bottom-nav').style.display=hasGlobalHeader?'flex':'none';
+  const desk=document.body.classList.contains('desktop');
+  $('g-header').style.display=hasGlobalHeader||desk?'flex':'none';
+  $('bottom-nav').style.display=hasGlobalHeader||desk?'flex':'none';
+  const parent=applySplit(name);
   // sync nav
   document.querySelectorAll('.nav-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.view===name);
+    b.classList.toggle('active',b.dataset.view===name||b.dataset.view===parent);
   });
   if(name==='tarifas') renderTarifas();
   if(name==='solicitudes') renderSolicitudes();
@@ -165,6 +169,43 @@ function showView(name){
 
 document.querySelectorAll('.nav-btn').forEach(btn=>{
   btn.addEventListener('click',()=>showView(btn.dataset.view));
+});
+
+// ── PC (pantalla ancha): lista y ficha lado a lado ──
+// Calendario | día, trabajo o edición  ·  Solicitudes | ficha o edición
+function isWide(){return document.body.classList.contains('wide');}
+function splitParentOf(name){
+  if(name==='day')return 'cal';
+  if(name==='detail'||name==='form'){
+    const j=name==='form'?formState:curJob;
+    return j&&j.date?'cal':'solicitudes';
+  }
+  return null;
+}
+function applySplit(name){
+  const views=$('views');
+  document.querySelectorAll('.view.side').forEach(v=>v.classList.remove('side'));
+  views.classList.remove('split','split-cal','split-sol','split-empty');
+  document.querySelectorAll('.job-card.sel').forEach(c=>c.classList.remove('sel'));
+  if(!isWide())return null;
+  if(name==='solicitudes'){views.classList.add('split','split-sol','split-empty');return null;}
+  const parent=splitParentOf(name);
+  if(!parent)return null;
+  $('view-'+parent).classList.add('side');
+  views.classList.add('split',parent==='cal'?'split-cal':'split-sol');
+  if(parent==='solicitudes'){
+    renderSolicitudes();
+    const id=(name==='form'?formState:curJob)?.id;
+    if(id)document.querySelectorAll(`#solicitudes-content [data-pid="${CSS.escape(id)}"]`).forEach(c=>c.classList.add('sel'));
+  }
+  return parent;
+}
+// Esc cierra el panel de la derecha
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||!isWide()||document.querySelector('#close-overlay.open,#lb.open'))return;
+  if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName))return;
+  if(curView==='detail')$('btn-back-day').click();
+  else if(curView==='form')$('btn-form-cancel').click();
 });
 
 // ════════════════════════════════════════
@@ -178,7 +219,7 @@ function subscribePipeline(){
   pipeUnsub=onSnapshot(q,snap=>{
     pipeline=[];snap.forEach(d=>{const j={id:d.id,...d.data()};if(!j.date)pipeline.push(j);});
     updatePipeBadge();
-    if(curView==='solicitudes')renderSolicitudes();
+    if(curView==='solicitudes'||$('view-solicitudes').classList.contains('side'))renderSolicitudes();
     if(curJob&&curView==='detail'&&!curJob.date){const f=pipeline.find(j=>j.id===curJob.id);if(f){curJob=f;renderDetailView();}}
   });
 }
@@ -2057,11 +2098,10 @@ function subscribePresupuestos(){
 //  BOOT
 // ════════════════════════════════════════
 function checkLayout(){
-  if(window.innerWidth>=768){
-    document.body.classList.add('desktop');
-  }else{
-    document.body.classList.remove('desktop');
-  }
+  const antes=isWide();
+  document.body.classList.toggle('desktop',window.innerWidth>=768);
+  document.body.classList.toggle('wide',window.innerWidth>=1100);
+  if(antes!==isWide())showView(!curView||(curView==='day'&&!isWide())?'cal':curView);
 }
 
 async function boot(){
