@@ -26,16 +26,17 @@ CONFIG = {
     "vol": {"cama": 1.5, "cama_individual": 1.0, "canape": 1.2, "somier": 0.3, "colchon": 0.5,
             "armario2": 1.0, "armario4": 2.0, "armario6": 3.0, "comoda": 0.5, "sofa": 1.5, "sillon": 0.6,
             "mesa": 0.8, "mesa_pequena": 0.3, "silla": 0.2, "aparador": 0.8, "televisor": 0.3,
-            "frigorifico": 1.0, "lavadora": 0.5, "electro": 0.3, "jardin": 0.5, "escritorio": 0.7,
+            "frigorifico": 1.0, "lavadora": 0.5, "electro": 0.3, "jardin": 0.5, "escritorio": 0.7, "chaise": 2.5,
             "bici": 0.5, "caja": 0.1, "otro": 0.4},
     # minutos de desmontaje por pareja; el montaje lleva 1,5 veces más
-    "desmontaje_min": {"canape": 15, "armario2": 20, "armario4": 35, "armario6": 45, "cama": 15},
+    "desmontaje_min": {"canape": 15, "armario2": 20, "armario4": 35, "armario6": 45, "cama": 15,
+                       "mesa": 10, "escritorio": 10, "chaise": 10},
     "factor_montaje": 1.5,
     "casa_m3": {"estudio": [8, 12], "1": [12, 18], "2": [20, 28], "3": [28, 38], "4": [38, 48], "chalet": [42, 60]},
     "casa_cajas": {"estudio": 20, "1": 35, "2": 50, "3": 60, "4": 75, "chalet": 90},
     "margen_pequenos": 0.15,              # casa completa sin cajas contadas: cosas pequeñas que no se ven
-    "cajas_por_respuesta": {"10": 8, "30": 20, "60": 45, "mas": 70},
-    "parte_fragil": 0.3,                  # parte de las cajas que es cristalería o frágil
+    "cajas_por_respuesta": {"10": 8, "20": 15, "30": 25, "45": 38, "60": 53, "80": 70, "mas": 90},
+    "parte_fragil": 0.4,                  # parte de las cajas que es cristalería o frágil
     "min_caja_fragil": 7.5, "min_caja_normal": 3.0,   # minutos de UNA persona por caja
     "material_por_caja": 40 / 55,         # € de cajas y film por caja
     "capacidad": {"crafter": 12, "iveco": 20},
@@ -46,9 +47,12 @@ CONFIG = {
     "min_planta": 10, "min_camion": {"puerta": 10, "30": 10, "100": 35, "mas": 50},
     "escala_m3": 10,                      # escaleras y distancia del camión crecen con el volumen (m³/10)
     "factor_conduccion": 1.05, "km_recogida": 8, "min_recogida": 8,
-    "jornada": 12, "jornada_fuera": 14, "conduccion_max_dia": 9, "jornada_casa_grande": 9,
+    "jornada": 12, "jornada_fuera": 14.5, "conduccion_max_dia": 9, "jornada_casa_grande": 9,
     "jornada_trabajo_mas_uno": 10, "max_personas": 6,
-    "ratio_viaje_largo": 1.2,             # conducción ≥ 1,2 × trabajo: el equipo lo marca el trabajo
+    "ratio_viaje_largo": 1.2,
+    "personas_chalet": 6,                 # chalet o casa grande: una persona más (banco de pruebas)
+    "margen_duda": 5,                     # puntos de margen de más cuando el motor ha tenido que suponer datos
+    "m3_porte_pequeno": 3,                # hasta aquí se ofrece el precio juntándolo con otro trabajo             # conducción ≥ 1,2 × trabajo: el equipo lo marca el trabajo
     "hotel_habitacion": 80, "personas_habitacion": 3, "comida_persona": 35,
     "km_max": 700, "horas_minimas": 2,
 }
@@ -56,7 +60,7 @@ CONFIG = {
 # Contadores del formulario → objeto del motor
 DESDE_FORM = {"camas": "cama", "canapes": "canape", "somieres": "somier", "colchones": "colchon",
               "armario2": "armario2", "armario4": "armario4", "armario6": "armario6", "comodas": "comoda",
-              "sofas": "sofa", "sillones": "sillon", "mesas": "mesa", "mesascentro": "mesa_pequena",
+              "sofas": "sofa", "chaise": "chaise", "sillones": "sillon", "mesas": "mesa", "mesascentro": "mesa_pequena",
               "sillas": "silla", "muebletv": "aparador", "tv": "televisor", "frigorifico": "frigorifico",
               "lavadora": "lavadora", "electro": "electro", "jardin": "jardin", "escritorios": "escritorio",
               "bicis": "bici"}
@@ -138,7 +142,7 @@ def entrada_desde_solicitud(job):
 
     desmontaje = clave("desmontaje", fw.DESMONTAJE)
     embalaje = clave("embalaje", fw.EMBALAJE)
-    cajas_resp = clave("cajas", fw.CAJAS)
+    cajas_resp = clave("cajas", fw.CAJAS) or fw.CAJAS_ANTES.get(str(inv.get("cajas") or "").lower())
     especiales = keys.get("especiales") if isinstance(keys.get("especiales"), list) else \
         [k for k, t in fw.ESPECIALES.items() if t in (inv.get("especiales") or [])]
     servicios = job.get("services") or []
@@ -302,10 +306,12 @@ def vehiculos(e, m3, cd_km, c, forzar_furgoneta=False):
     return [("iveco", 1)] if m3 <= cap_i else [("iveco", 1), ("crafter", 1)]
 
 
-def personas_por_volumen(e, m3):
+def personas_por_volumen(e, m3, c=CONFIG):
     p = 2 if m3 < 6 else 3 if m3 <= 15 else 4 if m3 <= 25 else 5
     if e["tipo"] == "casa" and e.get("casa") in ("3", "4", "chalet"):
         p = max(p, 5)
+    if e["tipo"] == "casa" and e.get("casa") == "chalet":
+        p = max(p, c["personas_chalet"])
     return p
 
 
@@ -366,7 +372,7 @@ def calcular_presupuesto(e, legs, tarifas=None, provincia=False, otro_trabajo_es
     c = cfg(tarifas)
     m3 = volumen(e, c)
     vehs = vehiculos(e, m3, legs[1][0], c, _forzar_furgoneta)
-    p = personas_por_volumen(e, m3)
+    p = personas_por_volumen(e, m3, c)
     mins, h_trab, h_cond, km, cajas = _horas(e, m3, p, legs, vehs, c)
     if h_cond >= c["ratio_viaje_largo"] * h_trab:          # viaje largo: manda el trabajo, no los m³
         p2 = min(p, personas_viaje_largo(m3, c))
@@ -400,15 +406,18 @@ def calcular_presupuesto(e, legs, tarifas=None, provincia=False, otro_trabajo_es
         rf = calcular_presupuesto(e, legs, tarifas, provincia, otro_trabajo_ese_dia, _forzar_furgoneta=True)
         alternativas.append({"tipo": "furgoneta_justa", "texto": "Con la furgoneta grande (va justa)",
                              "price": rf["price"], "estimate": rf["estimate"]})
-    if otro_trabajo_ese_dia:
-        # Solo horas, gasoil y km extra: el alquiler ya lo paga el otro trabajo y no hay mínimo de 2 h
+    if otro_trabajo_ese_dia or (e["tipo"] == "porte" and m3 <= c["m3_porte_pequeno"]):
+        # Juntándolo con otro trabajo: el alquiler y el viaje desde Huelva los paga la otra salida.
+        # Se cobra el trabajo, el tramo entre las dos casas y sus km; sin mínimo de 2 h.
+        cd_km, cd_min = legs[1]
+        h_junto = max(1.0, math.ceil((h_trab + cd_min * c["factor_conduccion"] / 60) * 2) / 2)
+        km_junto = cd_km + 20                                      # tramo entre casas + desvío
         sin_alquiler = {**t, "rent_furgoneta_200": 0, "rent_furgoneta_400": 0, "rent_camion_200": 0,
                         "rent_camion_400": 0, "extraKm": 0}
-        est_s = {**est, "vehicles": [{**v, "plan": 400, "days": 1} for v in est["vehicles"]],
-                 "hours": math.ceil((h_trab + h_cond) * 2) / 2,
-                 "extras": round(material + km * float(t["extraKm"]) * len(est["vehicles"]), 2)}
-        alternativas.append({"tipo": "aprovechando_salida", "price": calcular(est_s, sin_alquiler)["price"],
-                             "texto": "Aprovechando la salida de otro trabajo ese día (sin alquiler)"})
+        est_j = {**est, "vehicles": [{**v, "plan": 400, "days": 1, "km": km_junto} for v in est["vehicles"][:1]],
+                 "hours": h_junto, "extras": round(material + km_junto * float(t["extraKm"]), 2)}
+        alternativas.append({"tipo": "aprovechando_salida", "price": calcular(est_j, sin_alquiler)["price"],
+                             "texto": "Juntándolo con otro trabajo ese día" + (" (ese día ya hay uno)" if otro_trabajo_ese_dia else "")})
 
     return {"m3": m3, "vehiculos": vehs, "personas": p, "socios": socios, "dias": dias, "noches": noches,
             "horas": est["hours"], "horas_trabajo": round(h_trab, 2), "horas_conduccion": round(h_cond, 2),
@@ -445,7 +454,7 @@ def revisar(e, legs, r, c):
     if e.get("desmontaje") == "nose" and any(k in e["items"] for k in c["desmontaje_min"]):
         supuestos.append("No sabe si hay que desmontar: cuento desmontar y montar")
     if e["tipo"] == "casa" and not e["items"]:
-        supuestos.append("Solo dice el tamaño de la casa: volumen típico")
+        a_mano.append("Solo dice el tamaño de la casa, sin muebles: hay que pedir fotos o la lista")
     if e.get("embalaje") in ("todo", "fragil") and not (e["items"].get("caja") or e.get("cajas_respuesta") in c["cajas_por_respuesta"]):
         supuestos.append("No dice cuántas cajas: cuento las típicas de su casa")
     if esp - ESPECIALES_A_MANO:
@@ -509,7 +518,11 @@ def proponer(job, tarifas=None, rutas=None, otro_trabajo_ese_dia=False, ahora=No
             r = calcular_presupuesto(e, legs, tarifas, provincia, otro_trabajo_ese_dia)
         except Exception as ex:  # noqa: BLE001
             avisos.append(f"Error del motor: {ex}")
-    etiqueta, motivos, _ = revisar(e, legs, r, c)
+    etiqueta, motivos, supuestos = revisar(e, legs, r, c)
+    if r and etiqueta != "a_mano" and (supuestos or avisos) and c["margen_duda"]:
+        t_duda = {**(tarifas or {}), "businessPct": float({**DEFAULT_TARIFAS, **(tarifas or {})}["businessPct"]) + c["margen_duda"]}
+        r = calcular_presupuesto(e, legs, t_duda, provincia, otro_trabajo_ese_dia)
+        motivos = motivos + [f"Como faltan datos, {c['margen_duda']:g} puntos más de margen"]
     if etiqueta == "lista" and avisos:
         etiqueta = "revisar"
     motivos = avisos + [m for m in motivos if not (avisos and m.startswith("Sin ruta"))]
