@@ -524,5 +524,6 @@ def proponer(job, tarifas=None, rutas=None, otro_trabajo_ese_dia=False, ahora=No
                      "detalle": {k: r[k] for k in ("m3", "personas", "socios", "dias", "horas", "horas_trabajo",
                                                     "horas_conduccion", "km", "cajas", "minutos", "noche_eur")}})
     elif r:
-        prop["referencia"] = {"price": r["price"], "notes": "\n".join(texto_supuestos(r, provincia))}
+        prop["referencia"] = {"price": r["price"], "notes": "\n".join(texto_supuestos(r, provincia)),
+                              "estimate": r["estimate"]}
     return prop

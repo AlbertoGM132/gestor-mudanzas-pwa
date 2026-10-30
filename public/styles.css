@@ -462,3 +462,4 @@
 .motor-alt{display:flex;align-items:center;gap:8px;font-size:.82rem;border:1px solid var(--border);border-radius:10px;padding:6px 8px}
 .motor-alt span{flex:1;color:var(--muted)}
 .motor-alt strong{white-space:nowrap}
+.motor-desde{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin:0 0 10px;font-size:.85rem;line-height:1.4}
