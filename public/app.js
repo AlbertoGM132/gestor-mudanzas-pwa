@@ -538,10 +538,7 @@ function renderDetailView(){
   };
   const mp=curJob.motorProposal;
   if($('btn-use-motor'))$('btn-use-motor').onclick=()=>useMotor(mp.price,mp.estimate,mp.result,'Motor (revisado)');
-  if($('btn-adjust-motor'))$('btn-adjust-motor').onclick=()=>{
-    const pe=JSON.parse(JSON.stringify(mp.estimate||{}));
-    openQuote({...pe,matQty:pe.matQty||{},vehicles:pe.vehicles||[]});
-  };
+  if($('btn-adjust-motor'))$('btn-adjust-motor').onclick=()=>openQuote(motorEstimate(curJob));
   cont.querySelectorAll('[data-motor-alt]').forEach(b=>b.onclick=()=>{
     const a=(mp.alternativas||[])[Number(b.dataset.motorAlt)];
     if(a)useMotor(a.price,motorAltEstimate(mp,a),null,`Motor: ${a.texto}`);
@@ -616,6 +613,7 @@ function motorBlock(job){
     ${mp.result?`<div class="notes-text" style="color:var(--muted)">Coste ${fmt(mp.result.cost)} € + ${fmt(mp.result.business)} € para el negocio${mp.result.fuel?` · gasoil ${fmt(mp.result.fuel)} €`:''}</div>`:''}
     ${mp.notes?`<div class="proposal-notes">${esc(mp.notes)}</div>`:''}
     ${mp.referencia?`<div class="notes-text" style="color:var(--muted)">Solo como referencia: ${numEs(mp.referencia.price)} €</div>`:''}
+    ${mp.price==null&&mp.referencia&&mp.referencia.estimate?`<button class="btn btn-ghost btn-sm" id="btn-adjust-motor" style="margin-top:8px">✏️ Ajustar a partir de la referencia</button>`:''}
     ${alts?`<div class="motor-alts">${alts}</div>`:''}
     ${mp.fotosSinRevisar?`<div class="notes-text" style="color:var(--muted)">📷 ${mp.fotosSinRevisar} foto${mp.fotosSinRevisar>1?'s':''} que el motor no ve: míralas antes de enviar</div>`:''}
     ${mp.price!=null?`<button class="btn-complete" id="btn-use-motor">✅ Usar la del motor</button>
@@ -662,7 +660,7 @@ function quoteSection(job){
       <div class="detail-section-title">💶 Presupuesto</div>
       <div class="quote-summary">${lines}</div>
       ${mb}
-      <button class="btn-complete" data-quote-open style="margin-top:8px">🧮 Calcular presupuesto a mano</button>
+      <button class="btn-complete" data-quote-open style="margin-top:8px">${motorEstimate(job)?'🧮 Calcular a mano partiendo del motor':'🧮 Calcular presupuesto a mano'}</button>
     </div>`;
   const msg=quoteMessage(job);
   return `
@@ -678,9 +676,19 @@ function quoteSection(job){
       <button class="btn btn-ghost btn-sm" data-quote-open style="margin-top:8px">✏️ Recalcular</button>
     </div>`;
 }
+// Lo que calculó el motor (o su referencia, si la dejó «a mano»), listo para editar
+function motorEstimate(job){
+  const mp=job&&job.motorProposal,pe=mp&&(mp.estimate||(mp.referencia&&mp.referencia.estimate));
+  if(!pe)return null;
+  const e=JSON.parse(JSON.stringify(pe));
+  e.matQty=e.matQty||{};e.vehicles=e.vehicles||[];e.fromMotor=true;delete e.result;
+  return e;
+}
 function openQuote(est){
   formState={...curJob};formPhotos=[...(curJob.photos||[])];
-  if(est)formState.estimate=est;
+  // Sin precio guardado todavía: se parte de lo que calculó el motor en vez de empezar de cero
+  const base=est||(!curJob.estimate&&motorEstimate(curJob));
+  if(base)formState.estimate=base;
   openJobForm(true);activeTab='quote';renderTabBar();renderFormTab();
 }
 // Mensaje breve del presupuesto (formato de Alberto). Se edita en Tarifas → «Mensaje del presupuesto».
@@ -1224,6 +1232,7 @@ function renderQuoteTab(scroll){
   if(!e.matQty)e.matQty={};if(!Array.isArray(e.vehicles))e.vehicles=[];   // presupuestos antiguos o del conector
   const consumables=MATERIALS.filter(m=>!REUSABLE.includes(m));
   scroll.innerHTML=`
+    ${e.fromMotor?`<div class="motor-desde">⚙️ Parte de la propuesta del motor: cambia solo lo que no te cuadre y el precio se recalcula.</div>`:''}
     <div class="form-section">
       <div class="form-section-title">🚛 Vehículos</div>
       ${e.vehicles.map((v,i)=>`
@@ -1285,7 +1294,8 @@ function renderQuoteTab(scroll){
     const r=computeEstimate(e);
     if(!r.price){toast('Pon al menos las horas o un vehículo','err');return;}
     formState.price=String(r.price);
-    formState.estimate={...e,result:r,at:new Date().toISOString()};
+    const {fromMotor,...limpio}=e;
+    formState.estimate={...limpio,result:r,at:new Date().toISOString(),...(fromMotor?{by:'Motor (ajustado)'}:{})};
     // Desde una solicitud abierta: se guarda y se vuelve al detalle (pasa a «enviado» al mandarlo por WhatsApp)
     if(isEditing&&curJob){toast(`Precio: ${fmt(r.price)} € ✓`,'ok');$('btn-save-job').click();return;}
     if(!formState.date&&(formState.stage||'solicitud')==='solicitud')formState.stage='presupuestado';
