@@ -219,7 +219,9 @@ def preparar_rutas(entrada, rutas, guardadas=None):
     """(legs, coords, avisos). legs = [(km, min)] Huelva→carga, carga→descarga, descarga→Huelva."""
     avisos = []
     if guardadas and len(guardadas.get("legs") or []) == 3:
-        return [tuple(x) for x in guardadas["legs"]], guardadas.get("coords") or {}, avisos
+        # Firestore no admite listas dentro de listas: los tramos se guardan como {km, min}
+        legs = [(x["km"], x["min"]) if isinstance(x, dict) else tuple(x) for x in guardadas["legs"]]
+        return legs, guardadas.get("coords") or {}, avisos
     coords = {}
     for lado in ("origen", "destino"):
         d = entrada[lado]
@@ -513,7 +515,7 @@ def proponer(job, tarifas=None, rutas=None, otro_trabajo_ese_dia=False, ahora=No
     motivos = avisos + [m for m in motivos if not (avisos and m.startswith("Sin ruta"))]
     prop = {"by": "Motor", "version": VERSION, "at": (ahora or datetime.now(timezone.utc)).isoformat(),
             "etiqueta": etiqueta, "motivos": motivos, "entrada": e,
-            "rutas": {"legs": legs, "coords": coords} if legs else None,
+            "rutas": {"legs": [{"km": km, "min": mn} for km, mn in legs], "coords": coords} if legs else None,
             "fotosSinRevisar": e["fotos"]}
     if r and etiqueta != "a_mano":
         prop.update({"price": r["price"], "estimate": r["estimate"], "result": r["result"],
