@@ -211,6 +211,13 @@ def resumen_trabajo(doc_id, data):
                           for v in pe.get("vehicles") or [] if isinstance(v, dict)],
             "horas": pe.get("hours"), "trabajadores": pe.get("workers"), "socios": pe.get("partners"),
             "coste": pr.get("cost"), "gasoil": pr.get("fuel")}
+    mp = data.get("motorProposal") or {}
+    if isinstance(mp, dict) and mp.get("etiqueta"):
+        out["propuesta_motor"] = {
+            "precio": mp.get("price"), "etiqueta": mp.get("etiqueta"), "motivos": mp.get("motivos"),
+            "supuestos": mp.get("notes"), "detalle": mp.get("detalle"),
+            "alternativas": [{"texto": a.get("texto"), "precio": a.get("price")} for a in mp.get("alternativas") or []],
+            "version": mp.get("version"), "fecha": mp.get("at")}
     # Lo que Alberto acabó poniendo (para comparar con la propuesta y afinar)
     if "presupuesto_calculado" in out and est.get("hours") is not None:
         out["presupuesto_calculado"].update({

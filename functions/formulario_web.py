@@ -180,6 +180,27 @@ def inventario(d):
     return inv, lineas
 
 
+def claves_formulario(body, raw_inv, comentario):
+    """Lo marcado en el formulario con sus claves internas (para el motor de presupuestos).
+    Las etiquetas de `inventory` son para leer; esto es para calcular."""
+    muebles = {}
+    for k, v in (raw_inv.get("muebles") or {}).items() if isinstance(raw_inv.get("muebles"), dict) else []:
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            continue
+        if k in MUEBLES and 0 < n <= 30:
+            muebles[k] = n
+    lado = lambda x: x.get("piso") if isinstance(x, dict) and x.get("piso") in PISOS else None
+    elegido = lambda campo, tabla: raw_inv.get(campo) if raw_inv.get(campo) in tabla else None
+    return {"casa": elegido("casa", CASAS), "muebles": muebles,
+            "desmontaje": elegido("desmontaje", DESMONTAJE), "embalaje": elegido("embalaje", EMBALAJE),
+            "cajas": elegido("cajas", CAJAS),
+            "especiales": [x for x in (raw_inv.get("especiales") or []) if x in ESPECIALES],
+            "origin_piso": lado(body.get("origen")), "destin_piso": lado(body.get("destino")),
+            "comentario": bool(comentario), "entrega": body.get("entrega") if body.get("entrega") in ENTREGA else None}
+
+
 def huella_ip(ip, dia):
     """No guardamos la IP: solo un resumen que cambia cada día."""
     return hashlib.sha256(f"mds-form|{dia}|{ip}".encode()).hexdigest()[:20]
@@ -271,6 +292,7 @@ def procesar(body, ip, repo, ahora=None, extra=None):
         "crew": [], "vehicles": [], "materials": [], "photos": [], "price": "",
         "source": "web", "createdBy": extra.get("createdBy") or "Formulario web",
         "updatedBy": extra.get("createdBy") or "Formulario web",
+        "formKeys": claves_formulario(body, raw_inv, comentario),
     }
     data.update(extra.get("data") or {})
 
