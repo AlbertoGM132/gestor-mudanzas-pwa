@@ -210,3 +210,22 @@ def test_calle_que_no_existe_calcula_desde_el_pueblo():
     p = motor.proponer(job, T, SoloPueblos())
     assert p["etiqueta"] == "revisar" and p["price"] > 0
     assert any("centro de Aljaraque" in m for m in p["motivos"]) and not any(m.startswith("Sin ruta") for m in p["motivos"])
+
+
+def _sin_listas_anidadas(x, dentro_de_lista=False):
+    if isinstance(x, (list, tuple)):
+        assert not dentro_de_lista, "Firestore no admite listas dentro de listas"
+        return all(_sin_listas_anidadas(v, True) for v in x)
+    if isinstance(x, dict):
+        return all(_sin_listas_anidadas(v, False) for v in x.values())
+    return True
+
+
+def test_lo_que_se_guarda_cabe_en_firestore():
+    """Firestore rechaza listas dentro de listas: así falló el primer recálculo real."""
+    for nombre, job, legs, prov, *_ in CASOS:
+        job = {**job, "originAddress": "A, Huelva", "destinAddress": "B, Ayamonte"}
+        p = motor.proponer(job, T, RutasFalsas(), otro_trabajo_ese_dia=True)
+        assert _sin_listas_anidadas(json.loads(json.dumps(p))), nombre
+        p2 = motor.proponer({**job, "motorProposal": p}, T, RutasFalsas())
+        assert p2.get("price") == p.get("price"), nombre
