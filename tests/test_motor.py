@@ -199,3 +199,14 @@ def test_procesar_no_toca_precio_ni_propuesta_de_claude():
     prop = motor_app.procesar("x1", None, job, repo, RutasFalsas())
     assert repo.guardado["x1"] is prop and set(repo.guardado) == {"x1"}
     assert any(a["tipo"] == "aprovechando_salida" for a in prop["alternativas"])
+
+
+def test_calle_que_no_existe_calcula_desde_el_pueblo():
+    class SoloPueblos(RutasFalsas):
+        def geocodificar(self, texto):
+            self.llamadas += 1
+            return {"Huelva": [37.27, -6.95], "Aljaraque": [37.27, -7.02]}.get(texto)
+    job = sol(muebles={"sofas": 1}, originAddress="Huelva", destinAddress="Avenida Inventada 5, Aljaraque")
+    p = motor.proponer(job, T, SoloPueblos())
+    assert p["etiqueta"] == "revisar" and p["price"] > 0
+    assert any("centro de Aljaraque" in m for m in p["motivos"]) and not any(m.startswith("Sin ruta") for m in p["motivos"])
