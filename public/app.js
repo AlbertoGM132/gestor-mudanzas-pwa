@@ -203,7 +203,8 @@ function renderSolicitudes(){
         <div class="job-card-top">
           <div class="job-client-name">${esc(j.clientName||'Sin nombre')}${j.source==='web'?' <span class="web-tag">🌐 Web</span>':''}${j.possibleDuplicateOf?' <span class="web-tag dup-tag">⚠️ ¿Repetida?</span>':''}</div>
           ${j.price?`<div class="status-badge" style="background:var(--accentSoft);color:var(--accent)">${fmt(j.price)} €</div>`
-            :j.proposal&&j.proposal.price!=null?`<div class="status-badge" style="background:var(--greenSoft);color:var(--green)">${j.proposal.by==='Calculadora web'?'🧮':'🤖'} ${numEs(j.proposal.price)} €</div>`:''}
+            :j.proposal&&j.proposal.price!=null?`<div class="status-badge" style="background:var(--greenSoft);color:var(--green)">${j.proposal.by==='Calculadora web'?'🧮':'🤖'} ${numEs(j.proposal.price)} €</div>`
+            :j.motorProposal&&j.motorProposal.price!=null?`<div class="status-badge" style="background:var(--greenSoft);color:var(--green)">⚙️ ${numEs(j.motorProposal.price)} €</div>`:''}
         </div>
         ${j.location||(j.services||[]).length?`<div class="job-detail-row">🏷 ${esc([j.location,(j.services||[]).join(', ')].filter(Boolean).join(' · '))}</div>`:''}
         <div class="job-time-row">${d==null?'':d===0?'Hoy':`Hace ${d} día${d>1?'s':''}`}${(j.photos||[]).length?` · 📷 ${j.photos.length}`:''}${fu?' · <strong style="color:var(--amber)">toca seguimiento</strong>':''}</div>
@@ -535,6 +536,21 @@ function renderDetailView(){
     try{await setDoc(doc(db,'trabajos',curJob.id),data,{merge:true});curJob={...curJob,...data};toast(`💶 ${numEs(pr.price)} € ✓`,'ok');renderDetailView();}
     catch(e){toast('Error: '+e.message,'err');}
   };
+  const mp=curJob.motorProposal;
+  if($('btn-use-motor'))$('btn-use-motor').onclick=()=>useMotor(mp.price,mp.estimate,mp.result,'Motor (revisado)');
+  if($('btn-adjust-motor'))$('btn-adjust-motor').onclick=()=>{
+    const pe=JSON.parse(JSON.stringify(mp.estimate||{}));
+    openQuote({...pe,matQty:pe.matQty||{},vehicles:pe.vehicles||[]});
+  };
+  cont.querySelectorAll('[data-motor-alt]').forEach(b=>b.onclick=()=>{
+    const a=(mp.alternativas||[])[Number(b.dataset.motorAlt)];
+    if(a)useMotor(a.price,motorAltEstimate(mp,a),null,`Motor: ${a.texto}`);
+  });
+  if($('btn-recalc-motor'))$('btn-recalc-motor').onclick=async()=>{
+    try{await setDoc(doc(db,'trabajos',curJob.id),{motorRecalc:new Date().toISOString()},{merge:true});
+      toast('⚙️ Recalculando… en unos segundos aparece','ok');}
+    catch(e){toast('Error: '+e.message,'err');}
+  };
   if($('btn-adjust-proposal'))$('btn-adjust-proposal').onclick=()=>{
     const pe=JSON.parse(JSON.stringify(curJob.proposal.estimate||{}));
     openQuote({...pe,matQty:pe.matQty||{},vehicles:pe.vehicles||[]});
@@ -572,6 +588,47 @@ function clientSummary(j){
     (j.photos||[]).length?`📷 ${j.photos.length} foto${j.photos.length>1?'s':''} (abajo)`:'📷 Sin fotos todavía',
   ].filter(Boolean);
 }
+// ── Propuesta del motor de presupuestos (modo sombra: se ve junto a la de Claude) ──
+const MOTOR_ETQ={lista:['🟢','Lista para enviar'],revisar:['🟡','Revisa un dato'],a_mano:['🔴','Hay que calcularla a mano']};
+function motorAltEstimate(mp,a){
+  const e=JSON.parse(JSON.stringify(mp.estimate||{}));
+  if(a.tipo==='un_socio'){e.partners=Math.max(0,(Number(e.partners)||0)-1);e.workers=(Number(e.workers)||0)+1;}
+  if(a.tipo==='furgoneta_justa'&&a.estimate)return {...a.estimate,m3:e.m3};
+  return e;
+}
+function motorBlock(job){
+  const mp=job.motorProposal;
+  if(!mp)return `<div class="proposal motor-proposal"><div class="notes-text" style="color:var(--muted)">⚙️ El motor todavía no ha calculado esta solicitud.</div>
+    <button class="btn btn-ghost btn-sm" id="btn-recalc-motor" style="margin-top:6px">↻ Calcular con el motor</button></div>`;
+  const [ic,txt]=MOTOR_ETQ[mp.etiqueta]||['⚪',''];
+  const d=mp.detalle||{},pe=mp.estimate||{};
+  const datos=mp.price!=null?[d.m3?`${numEs(d.m3)} m³`:'',vehiculosTexto(pe.vehicles),d.km?`${numEs(d.km)} km`:'',
+    d.horas?`${numEs(d.horas)} h`:'',d.personas?`${d.personas} personas (${d.socios} socio${d.socios===1?'':'s'})`:'',
+    d.dias>1?`${d.dias} días`:''].filter(Boolean).join(' · '):'';
+  const motivos=(mp.motivos||[]).map(m=>`<li>${esc(m)}</li>`).join('');
+  const alts=(mp.alternativas||[]).map((a,i)=>`<div class="motor-alt"><span>${esc(a.texto)}</span><strong>${numEs(a.price)} €</strong>
+    <button class="btn btn-ghost btn-sm" data-motor-alt="${i}">Usar</button></div>`).join('');
+  return `<div class="proposal motor-proposal">
+    <div class="quote-price"><span>⚙️ Motor de presupuestos</span><strong>${mp.price!=null?numEs(mp.price)+' €':'—'}</strong></div>
+    <div class="motor-etq motor-${esc(mp.etiqueta||'')}">${ic} ${txt}</div>
+    ${motivos?`<ul class="motor-motivos">${motivos}</ul>`:''}
+    ${datos?`<div class="notes-text" style="color:var(--muted)">${esc(datos)}</div>`:''}
+    ${mp.result?`<div class="notes-text" style="color:var(--muted)">Coste ${fmt(mp.result.cost)} € + ${fmt(mp.result.business)} € para el negocio${mp.result.fuel?` · gasoil ${fmt(mp.result.fuel)} €`:''}</div>`:''}
+    ${mp.notes?`<div class="proposal-notes">${esc(mp.notes)}</div>`:''}
+    ${mp.referencia?`<div class="notes-text" style="color:var(--muted)">Solo como referencia: ${numEs(mp.referencia.price)} €</div>`:''}
+    ${alts?`<div class="motor-alts">${alts}</div>`:''}
+    ${mp.fotosSinRevisar?`<div class="notes-text" style="color:var(--muted)">📷 ${mp.fotosSinRevisar} foto${mp.fotosSinRevisar>1?'s':''} que el motor no ve: míralas antes de enviar</div>`:''}
+    ${mp.price!=null?`<button class="btn-complete" id="btn-use-motor">✅ Usar la del motor</button>
+    <button class="btn btn-ghost btn-sm" id="btn-adjust-motor" style="margin-top:8px">✏️ Ajustar</button>`:''}
+    <button class="btn btn-ghost btn-sm" id="btn-recalc-motor" style="margin-top:8px">↻ Recalcular con el motor</button>
+  </div>`;
+}
+async function useMotor(price,estimate,result,label){
+  const data={price:String(price),estimate:{...estimate,...(result?{result}:{}),at:new Date().toISOString(),by:label},
+    updatedBy:auth.currentUser.email,updatedAt:serverTimestamp()};
+  try{await setDoc(doc(db,'trabajos',curJob.id),data,{merge:true});curJob={...curJob,...data};toast(`💶 ${numEs(price)} € ✓`,'ok');renderDetailView();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
 function quoteSection(job){
   if(job.status==='completado')return '';
   const r=job.estimate&&job.estimate.result,price=Number(job.price||0);
@@ -579,6 +636,7 @@ function quoteSection(job){
   const hasPhone=!!waPhone(job.phone);
   const lines=clientSummary(job).map(l=>`<div class="quote-line">${esc(l)}</div>`).join('');
   const pr=job.proposal;
+  const mb=price?'':motorBlock(job);
   if(!price&&pr&&pr.price!=null){
     const pe=pr.estimate||{},km=(pe.vehicles||[]).reduce((a,v)=>a+Number(v.km||0),0);
     const datos=[Number(pe.m3)?`${numEs(pe.m3)} m³`:'',vehiculosTexto(pe.vehicles),km?`${numEs(km)} km`:'',
@@ -596,13 +654,15 @@ function quoteSection(job){
         <button class="btn-complete" id="btn-use-proposal">✅ Usar esta propuesta</button>
         <button class="btn btn-ghost btn-sm" id="btn-adjust-proposal" style="margin-top:8px">✏️ Ajustar</button>
       </div>
+      ${mb}
     </div>`;
   }
   if(!price) return `
     <div class="detail-section quote-box">
       <div class="detail-section-title">💶 Presupuesto</div>
       <div class="quote-summary">${lines}</div>
-      <button class="btn-complete" data-quote-open>🧮 Calcular presupuesto</button>
+      ${mb}
+      <button class="btn-complete" data-quote-open style="margin-top:8px">🧮 Calcular presupuesto a mano</button>
     </div>`;
   const msg=quoteMessage(job);
   return `

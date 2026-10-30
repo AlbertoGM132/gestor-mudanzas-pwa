@@ -452,3 +452,13 @@
     .photo-fig{margin:0;display:flex;flex-direction:column;gap:4px;min-width:0}
     .photo-fig figcaption{font-size:.72rem;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
     .dup-tag{background:var(--amberSoft);color:var(--amber)}
+
+/* Motor de presupuestos */
+.motor-proposal{margin-top:10px}
+.motor-etq{font-size:.82rem;font-weight:800;margin:2px 0 6px}
+.motor-lista{color:var(--green)}.motor-revisar{color:var(--amber)}.motor-a_mano{color:var(--danger)}
+.motor-motivos{margin:0 0 6px 18px;padding:0;font-size:.8rem;color:var(--muted);line-height:1.4}
+.motor-alts{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+.motor-alt{display:flex;align-items:center;gap:8px;font-size:.82rem;border:1px solid var(--border);border-radius:10px;padding:6px 8px}
+.motor-alt span{flex:1;color:var(--muted)}
+.motor-alt strong{white-space:nowrap}

@@ -200,3 +200,21 @@ def test_formulario_sigue_si_falla_buscar_repetidas():
     repo = R()
     assert fw.procesar({"nombre": "Ana", "telefono": "600000000", "t": 9000}, "1", repo)["ok"]
     assert "possibleDuplicateOf" not in repo.creados[0]
+
+
+def test_formulario_guarda_claves_para_el_motor():
+    repo = Repo()
+    body = {"nombre": "Ana", "telefono": "600000000", "t": 9000, "servicios": ["mudanza"], "comentario": "ojo con la vitrina",
+            "origen": {"poblacion": "Huelva", "piso": "2", "ascensor": "no", "aparcamiento": "30"},
+            "destino": {"poblacion": "Aljaraque", "piso": "bajo"},
+            "inventario": {"casa": "2", "muebles": {"sofas": 2, "armario4": 1, "inventado": 3}, "desmontaje": "si",
+                           "embalaje": "todo", "cajas": "60", "especiales": ["piano", "x"]}}
+    fw.procesar(body, "1", repo)
+    k = repo.creados[0]["formKeys"]
+    assert k == {"casa": "2", "muebles": {"sofas": 2, "armario4": 1}, "desmontaje": "si", "embalaje": "todo",
+                 "cajas": "60", "especiales": ["piano"], "origin_piso": "2", "destin_piso": "bajo",
+                 "comentario": True, "entrega": None}
+    import motor
+    e, _ = motor.entrada_desde_solicitud(repo.creados[0])
+    assert e["tipo"] == "casa" and e["items"] == {"sofa": 2, "armario4": 1} and e["origen"]["piso"] == 2
+    assert e["origen"]["ascensor"] is False and e["comentario"] is True
