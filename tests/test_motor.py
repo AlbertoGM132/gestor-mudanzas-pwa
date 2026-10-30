@@ -114,7 +114,7 @@ def test_lee_solicitudes_antiguas_por_etiquetas():
                          "detalles": {"sofás": "de 3 plazas"}}}
     e, _ = motor.entrada_desde_solicitud(job)
     assert e["tipo"] == "casa" and e["casa"] == "2" and e["items"] == {"sofa": 2, "armario4": 1}
-    assert e["embalaje"] == "todo" and e["cajas_respuesta"] == "60"
+    assert e["embalaje"] == "todo" and e["cajas_respuesta"] == "45"        # tramo antiguo «30 a 60»
     assert e["origen"]["piso"] == 3 and e["origen"]["ascensor"] is False and e["origen"]["aparcamiento"] == "100"
     assert e["destino"]["piso"] == 0
 
@@ -229,3 +229,30 @@ def test_lo_que_se_guarda_cabe_en_firestore():
         assert _sin_listas_anidadas(json.loads(json.dumps(p))), nombre
         p2 = motor.proponer({**job, "motorProposal": p}, T, RutasFalsas())
         assert p2.get("price") == p.get("price"), nombre
+
+
+# ── Ajustes del banco de pruebas (30/10) ─────────────────────
+
+def test_chalet_lleva_seis_personas():
+    e, r = calc(sol(casa="chalet", muebles={"sofas": 3, "camas": 4, "armario4": 2}), [(30, 30), (20, 20), (30, 30)], True)
+    assert r["personas"] == 6
+
+
+def test_solo_tamano_de_casa_va_a_mano():
+    p = motor.proponer(sol(casa="2", originAddress="A, Huelva", destinAddress="B, Ayamonte"), T, RutasFalsas())
+    assert p["etiqueta"] == "a_mano" and "referencia" in p
+
+
+def test_si_faltan_datos_sube_el_margen():
+    base = sol(muebles={"sofas": 1, "camas": 1}, o_piso="2", o_asc=True, originAddress="A, Huelva", destinAddress="B, Ayamonte")
+    sin_park = {**base, "originAccess": {}}
+    p1 = motor.proponer(base, T, RutasFalsas())
+    p2 = motor.proponer(sin_park, T, RutasFalsas())
+    assert p1["etiqueta"] == "lista" and p2["etiqueta"] == "revisar"
+    assert p2["result"]["business"] > p1["result"]["business"] and any("margen" in m for m in p2["motivos"])
+
+
+def test_porte_pequeno_ofrece_precio_juntandolo():
+    e, r = calc(sol(muebles={"lavadora": 1}), [(40, 40), (25, 20), (45, 40)], True)
+    alt = next(a for a in r["alternativas"] if a["tipo"] == "aprovechando_salida")
+    assert alt["price"] < r["price"] / 1.5

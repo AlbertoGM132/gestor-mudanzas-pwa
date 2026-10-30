@@ -230,7 +230,8 @@ const GRUPOS = [
     ['comodas','🗄️','Cómodas, mesitas o estanterías','','Ej.: 2 mesitas y una cómoda'],
   ]],
   ['Salón y comedor', [
-    ['sofas','🛋️','Sofás','Escribe las medidas o las plazas','Ej.: 2 de 160 cm y 1 de 120 cm'],
+    ['sofas','🛋️','Sofás de 2 o 3 plazas','Escribe las medidas si las sabes','Ej.: 2 de 160 cm y 1 de 120 cm'],
+    ['chaise','🛋️','Chaise longue o sofá rinconera','Los que tienen una parte alargada o en L','Ej.: rinconera de 2,5 × 1,8 m'],
     ['sillones','💺','Sillones o butacas','','Ej.: un sillón relax'],
     ['mesas','🍽️','Mesas de comedor','','Ej.: de cristal, para 6'],
     ['mesascentro','☕','Mesas de centro o auxiliares','',''],
@@ -252,7 +253,8 @@ const GRUPOS = [
 const MUEBLES = GRUPOS.flatMap(g => g[1]);
 const DESMONTAJE = [['si','🔧','Sí, desmontadlos y montadlos vosotros'],['desmontar','🪛','Solo desmontar'],['no','✅','No hace falta','Van montados o ya los desmonto yo'],['nose','🤷','No lo sé']];
 const EMBALAJE = [['todo','📦','Embaláis vosotros todo','Cajas, ropa, vajilla…'],['fragil','🍽️','Solo lo frágil','Vajilla, cristal, cuadros…'],['yo','🙋','Lo embalo yo'],['nada','👍','No hay nada que embalar','Solo muebles']];
-const CAJAS = [['10','','Menos de 10'],['30','','10 a 30'],['60','','30 a 60'],['mas','','Más de 60'],['nose','','No lo sé']];
+const CAJAS = [['10','','Menos de 10'],['20','','10 a 20'],['30','','20 a 30'],['45','','30 a 45'],['60','','45 a 60'],
+  ['80','','60 a 80'],['mas','','Más de 80'],['nose','','No lo sé']];
 const ESPECIALES = [['piano','🎹','Piano'],['caja-fuerte','🔒','Caja fuerte'],['nevera-americana','🧊','Nevera americana'],['pesado','🏋️','Algo de más de 100 kg'],
   ['plantas','🪴','Plantas grandes'],['arte','🖼️','Cuadros u obras de arte'],['nada','👍','Nada de esto']];
 const PISOS = [['bajo','Bajo o casa'],['1','1º'],['2','2º'],['3','3º'],['4','4º o más']];
@@ -437,8 +439,10 @@ function rDesmontaje(cont) {
 function rEmbalaje(cont) {
   titulo(cont, '¿Quién embala las cajas?', 'Ropa, libros, cocina, vajilla…');
   cont.appendChild(opciones(EMBALAJE, {valor:S.embalaje, alPulsar:elegir(S, 'embalaje')}));
-  if (S.embalaje === 'yo' || S.embalaje === 'fragil') {
-    cont.insertAdjacentHTML('beforeend', `<h2>¿Cuántas cajas te salen más o menos?</h2>`);
+  if (S.embalaje === 'yo' || S.embalaje === 'fragil' || S.embalaje === 'todo') {
+    cont.insertAdjacentHTML('beforeend', S.embalaje === 'todo'
+      ? `<h2>¿Cuántas cajas crees que harán falta?</h2><p class="tip">Una caja grande por cada balda de armario o estantería llena, más la cocina. Si no lo sabes, no pasa nada.</p>`
+      : `<h2>¿Cuántas cajas te salen más o menos?</h2>`);
     cont.appendChild(opciones(CAJAS, {valor:S.cajas, clase:'two', alPulsar:elegir(S, 'cajas')}));
   }
 }
@@ -617,7 +621,7 @@ function rRepaso(cont) {
     ['casa', 'Casa', txt(CASAS, S.casa)],
     ['muebles', 'Muebles', muebles.join('\n')],
     ['desmontaje', 'Desmontaje', txt(DESMONTAJE, S.desmontaje)],
-    ['embalaje', 'Embalaje', [txt(EMBALAJE, S.embalaje), S.cajas && (S.embalaje === 'yo' || S.embalaje === 'fragil') ? `${txt(CAJAS, S.cajas)} cajas` : ''].filter(Boolean).join(' · ')],
+    ['embalaje', 'Embalaje', [txt(EMBALAJE, S.embalaje), S.cajas && ['yo','fragil','todo'].includes(S.embalaje) ? `${txt(CAJAS, S.cajas)} cajas` : ''].filter(Boolean).join(' · ')],
     ['especiales', 'Algo especial', S.especiales.map(v => txt(ESPECIALES, v)).join(', ')],
     ['origen', 'Recogida', ladoTxt(S.origen)],
     ['destino', 'Entrega', S.destinoNoSe ? 'Aún no lo sabes' : ladoTxt(S.destino)],

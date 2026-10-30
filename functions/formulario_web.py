@@ -53,7 +53,8 @@ MUEBLES = {"camas": ("cama", "camas"), "canapes": ("canapé", "canapés"),
            "armario2": ("armario de 2 puertas", "armarios de 2 puertas"), "armario4": ("armario de 4 puertas", "armarios de 4 puertas"),
            "armario6": ("armario de 6 puertas o esquinero", "armarios de 6 puertas o esquineros"),
            "comodas": ("cómoda, mesita o estantería", "cómodas, mesitas o estanterías"),
-           "sofas": ("sofá", "sofás"), "sillones": ("sillón o butaca", "sillones o butacas"),
+           "sofas": ("sofá", "sofás"), "chaise": ("chaise longue o rinconera", "chaise longues o rinconeras"),
+           "sillones": ("sillón o butaca", "sillones o butacas"),
            "mesas": ("mesa", "mesas"), "mesascentro": ("mesa de centro o auxiliar", "mesas de centro o auxiliares"),
            "sillas": ("silla", "sillas"), "muebletv": ("mueble de TV, aparador o vitrina", "muebles de TV, aparadores o vitrinas"),
            "tv": ("televisor", "televisores"),
@@ -67,7 +68,10 @@ EMBALAJE = {"todo": "lo embalamos nosotros (todo)", "fragil": "nosotros solo lo 
             "nada": "no hay nada que embalar (solo muebles)"}
 ENTREGA = {"mismo": "el mismo día de la recogida", "espera": "puede esperar unos días"}
 DUPLICADO_HORAS = 72                    # otra solicitud con el mismo teléfono en este plazo = posible repetida
-CAJAS = {"10": "menos de 10", "30": "10 a 30", "60": "30 a 60", "mas": "más de 60", "nose": "no lo sabe"}
+CAJAS = {"10": "menos de 10", "20": "10 a 20", "30": "20 a 30", "45": "30 a 45", "60": "45 a 60", "80": "60 a 80",
+         "mas": "más de 80", "nose": "no lo sabe"}
+# Tramos antiguos (hasta el 30/10/2026), para leer solicitudes viejas
+CAJAS_ANTES = {"10 a 30": "20", "30 a 60": "45", "más de 60": "80"}
 ESPECIALES = {"piano": "piano", "caja-fuerte": "caja fuerte", "nevera-americana": "nevera americana",
               "pesado": "algo de más de 100 kg", "plantas": "plantas grandes", "arte": "cuadros u obras de arte"}
 
