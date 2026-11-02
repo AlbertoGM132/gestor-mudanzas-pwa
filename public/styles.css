@@ -463,3 +463,26 @@
 .motor-alt span{flex:1;color:var(--muted)}
 .motor-alt strong{white-space:nowrap}
 .motor-desde{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin:0 0 10px;font-size:.85rem;line-height:1.4}
+
+/* ══════════════════════════════════════
+   PC ANCHO (≥1100 px, .wide): lista y ficha lado a lado
+══════════════════════════════════════ */
+body.desktop .nav-btn{flex:none}
+body.desktop #bottom-nav{display:flex}
+body.wide #views.split{display:grid;grid-template-rows:minmax(0,1fr);overflow:hidden}
+body.wide #views.split-cal{grid-template-columns:minmax(0,1fr) minmax(420px,36%)}
+body.wide #views.split-sol{grid-template-columns:minmax(380px,34%) minmax(0,1fr)}
+body.wide #views.split .view{height:100%;min-height:0;overflow-y:auto}
+body.wide #views.split .view.side{display:flex;order:0}
+body.wide #views.split .view.active{order:1;min-width:0}
+body.wide #views.split-sol .view.side,body.wide #views.split-empty .view.active{border-right:1px solid var(--border)}
+body.wide #views.split-cal .view.active{border-left:1px solid var(--border);background:var(--surface)}
+body.wide #views.split .detail-content,body.wide #views.split .day-content,body.wide #views.split .form-scroll,
+body.wide #views.split .pres-content{max-width:none;margin:0;padding:18px 22px}
+body.wide #views.split-sol .view.active .detail-content,body.wide #views.split-sol .view.active .form-scroll{max-width:860px}
+body.wide #views.split-empty::after{content:"Elige una solicitud para verla aquí";order:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:700;font-size:.9rem}
+body.wide #views.split-cal #btn-back-cal{visibility:hidden}
+body.wide .job-card.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accentSoft)}
+body.wide .cal-cell{min-height:104px}
+body.wide .pill-time,body.wide .pill-name{font-size:.62rem}
+body.wide .finanzas-content,body.wide .tarifas-content,body.wide #view-presupuestos .pres-content{max-width:1080px}
