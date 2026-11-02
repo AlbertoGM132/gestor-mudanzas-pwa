@@ -23,7 +23,8 @@ def debe_calcular(antes, despues):
     if (despues.get("stage") or "solicitud") != "solicitud":
         return False
     if antes is None:
-        return True
+        # La calculadora de la web ya guarda la propuesta del motor al crear la solicitud
+        return not despues.get("motorProposal")
     return (despues.get("motorRecalc") or "") != (antes.get("motorRecalc") or "")
 
 

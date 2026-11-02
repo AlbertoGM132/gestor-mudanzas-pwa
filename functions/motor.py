@@ -27,10 +27,13 @@ CONFIG = {
             "armario2": 1.0, "armario4": 2.0, "armario6": 3.0, "comoda": 0.5, "sofa": 1.5, "sillon": 0.6,
             "mesa": 0.8, "mesa_pequena": 0.3, "silla": 0.2, "aparador": 0.8, "televisor": 0.3,
             "frigorifico": 1.0, "lavadora": 0.5, "electro": 0.3, "jardin": 0.5, "escritorio": 0.7, "chaise": 2.5,
-            "bici": 0.5, "caja": 0.1, "otro": 0.4},
+            "bici": 0.5, "caja": 0.1, "otro": 0.4,
+            # lo que distingue la calculadora de la web (la IA de las fotos)
+            "sofa_pequeno": 1.0, "mesita": 0.2, "estanteria": 0.6, "secadora": 0.5, "lavavajillas": 0.5,
+            "horno_microondas": 0.15, "maleta": 0.15, "planta": 0.3},
     # minutos de desmontaje por pareja; el montaje lleva 1,5 veces más
     "desmontaje_min": {"canape": 15, "armario2": 20, "armario4": 35, "armario6": 45, "cama": 15,
-                       "mesa": 10, "escritorio": 10, "chaise": 10},
+                       "cama_individual": 10, "mesa": 10, "escritorio": 10, "chaise": 10},
     "factor_montaje": 1.5,
     "casa_m3": {"estudio": [8, 12], "1": [12, 18], "2": [20, 28], "3": [28, 38], "4": [38, 48], "chalet": [42, 60]},
     "casa_cajas": {"estudio": 20, "1": 35, "2": 50, "3": 60, "4": 75, "chalet": 90},
@@ -507,10 +510,16 @@ def texto_supuestos(r, provincia):
 
 def proponer(job, tarifas=None, rutas=None, otro_trabajo_ese_dia=False, ahora=None):
     """Calcula la propuesta del motor para una solicitud. Nunca lanza: si algo falla, etiqueta «a_mano»."""
-    c = cfg(tarifas)
     e, _ = entrada_desde_solicitud(job)
     guardadas = (job.get("motorProposal") or {}).get("rutas") if isinstance(job.get("motorProposal"), dict) else None
     legs, coords, avisos = preparar_rutas(e, rutas, guardadas)
+    return proponer_entrada(e, legs, coords, avisos, tarifas, otro_trabajo_ese_dia, ahora)
+
+
+def proponer_entrada(e, legs, coords, avisos=None, tarifas=None, otro_trabajo_ese_dia=False, ahora=None):
+    """Lo mismo que `proponer`, a partir de la entrada y la ruta ya hechas (la usa la calculadora de la web)."""
+    c = cfg(tarifas)
+    avisos = list(avisos or [])
     provincia = en_provincia(coords)
     r = None
     if legs:
@@ -535,8 +544,11 @@ def proponer(job, tarifas=None, rutas=None, otro_trabajo_ese_dia=False, ahora=No
                      "notes": "\n".join(texto_supuestos(r, provincia)),
                      "alternativas": r["alternativas"],
                      "detalle": {k: r[k] for k in ("m3", "personas", "socios", "dias", "horas", "horas_trabajo",
-                                                    "horas_conduccion", "km", "cajas", "minutos", "noche_eur")}})
+                                                    "horas_conduccion", "km", "cajas", "minutos", "noche_eur")},
+                     "vehiculo": _veh_txt(r["vehiculos"])})
     elif r:
         prop["referencia"] = {"price": r["price"], "notes": "\n".join(texto_supuestos(r, provincia)),
-                              "estimate": r["estimate"]}
+                              "estimate": r["estimate"],
+                              "detalle": {k: r[k] for k in ("m3", "personas", "dias", "horas", "km")},
+                              "vehiculo": _veh_txt(r["vehiculos"])}
     return prop
