@@ -253,6 +253,8 @@ def test_calculadora_y_app_dan_lo_mismo():
     assert e["m3"] == 12 and e["personas"] == 3 == mp["detalle"]["personas"]   # antes salían 4
     assert e["min"] <= mp["price"] <= e["max"]
     assert "3 personas" in repo.creados[0]["notes"]
+    # Al cliente, solo los km entre casas (4); el día completo (36) queda para la app
+    assert e["km"] == 4 and "4 km entre casas (36 km el día completo)" in repo.creados[0]["notes"]
 
 def test_calculadora_porte_pequeno_dos_personas_y_furgoneta():
     r, _ = _calc("porte", None, [{"categoria": "cama", "nombre": "cama", "cantidad": 1},

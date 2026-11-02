@@ -378,7 +378,7 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
     coords = {"origen": list(o_xy), "destino": list(d_xy)}
     avisos = [] if fuente_km == "carretera" else ["Km aproximados (sin ruta por carretera)"]
     prop = motor.proponer_entrada(entrada, legs, coords, avisos, tarifas, ahora=ahora)
-    c = cliente_desde_motor(prop, datos)
+    c = cliente_desde_motor(prop, datos, legs)
 
     # Lo mismo que el formulario de presupuesto, para que la app lo entienda igual
     muebles = {}
@@ -403,7 +403,8 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
 
     rango = "sin precio (hay que calcularlo a mano)" if c["sin_precio"] else f"{c['min']}-{c['max']} €"
     nota = (f"🧮 Calculadora web: al cliente le salió {rango} (orientativo) · {_n(c['m3'])} m³ · "
-            f"{c['vehiculo']} · {c['personas']} personas · {_n(c['horas'])} h · {c['km']} km")
+            f"{c['vehiculo']} · {c['personas']} personas · {_n(c['horas'])} h · {c['km']} km entre casas"
+            f" ({c['km_dia']} km el día completo)")
     camion = [f"{n}: camión a ~{int(m)} m del portal" for n, m in
               (("Carga", datos["origen"]["camion_m"]), ("Descarga", datos["destino"]["camion_m"])) if m is not None]
     ahora_iso = (ahora or datetime.now(timezone.utc)).isoformat()
@@ -428,6 +429,7 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
     if res.get("ignorada"):
         return {"ok": True}
     _marcar_lead(repo, body, "calculadora", res.get("id"))
+    # Al cliente solo la distancia entre su casa y la nueva (los km del día completo son cosa nuestra)
     publico = {k: c[k] for k in ("m3", "vehiculo", "personas", "horas", "dias", "km", "sin_precio", "especiales")}
     if not c["sin_precio"]:
         publico.update(min=c["min"], max=c["max"])
@@ -465,15 +467,17 @@ def entrada_motor(datos, body, o_in, d_in, o_xy, d_xy):
             "fecha": fw._txt(body.get("fecha"), 10)}
 
 
-def cliente_desde_motor(prop, datos):
-    """Lo que ve el cliente: un rango alrededor del precio del motor y el resumen (nunca el desglose)."""
+def cliente_desde_motor(prop, datos, legs):
+    """Lo que ve el cliente: un rango alrededor del precio del motor y el resumen (nunca el desglose).
+    `km` es la distancia entre las dos direcciones; `km_dia`, lo que recorremos en todo el día."""
     r = prop.get("detalle") or (prop.get("referencia") or {}).get("detalle") or {}
     precio = prop.get("price") or (prop.get("referencia") or {}).get("price")
     vehiculo = prop.get("vehiculo") or (prop.get("referencia") or {}).get("vehiculo") or ""
     km_max = motor.cfg()["km_max"]
     sin_precio = not precio or not r or r.get("km", 0) > km_max
     c = {"m3": r.get("m3", 0), "vehiculo": vehiculo, "personas": r.get("personas", 2),
-         "horas": float(r.get("horas", 0)), "dias": r.get("dias", 1), "km": r.get("km", 0),
+         "horas": float(r.get("horas", 0)), "dias": r.get("dias", 1),
+         "km": round(legs[1][0]), "km_dia": r.get("km", 0),
          "sin_precio": sin_precio, "especiales": datos["especiales"]}
     if not sin_precio:
         c["min"] = estimador._r5(precio * RANGO[0])
