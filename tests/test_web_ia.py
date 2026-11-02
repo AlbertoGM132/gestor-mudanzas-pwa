@@ -88,7 +88,9 @@ def test_estimar_guarda_solicitud_y_rango():
     assert "supuestos" not in e and "resultado" not in json.dumps(e)   # nada interno al cliente
     d = repo.creados[0]
     assert d["source"] == "web" and d["createdBy"] == "Calculadora web" and d["stage"] == "solicitud"
-    assert d["proposal"]["by"] == "Calculadora web" and d["proposal"]["price"] >= e["min"]
+    mp = d["motorProposal"]                     # la propuesta del motor va guardada desde el principio
+    assert mp["by"] == "Motor" and e["min"] <= mp["price"] <= e["max"] and "proposal" not in d
+    assert mp["rutas"]["legs"][1] == {"km": 12.0, "min": 12.0}
     assert d["webEstimate"]["min"] == e["min"]
     assert d["originAccess"] == {"parking": "100"} and d["destinAccess"] == {"parking": "puerta"}
     assert d["inventory"]["muebles"] == {"sofá": 1, "armarios de 4 puertas": 2, "bicicleta": 1}   # la bici ya tiene contador propio
@@ -232,3 +234,34 @@ def test_formulario_guarda_claves_para_el_motor():
     e, _ = motor.entrada_desde_solicitud(repo.creados[0])
     assert e["tipo"] == "casa" and e["items"] == {"sofa": 2, "armario4": 1} and e["origen"]["piso"] == 2
     assert e["origen"]["ascensor"] is False and e["comentario"] is True
+
+
+def _calc(tipo, casa, items, ruta=lambda p: [(8.0, 10.0), (4.0, 6.0), (8.0, 10.0)]):
+    b = {**base(), "tipo": tipo, "casa": casa, "items": items, "fotos": [],
+         "desmontaje": "si", "embalaje": "yo"}
+    b["origen"] = {**b["origen"], "piso": "bajo", "camion_m": 0}
+    b["destino"] = {**b["destino"], "piso": "bajo", "camion_m": 0}
+    repo = Repo()
+    return w.estimar(b, "1", repo, {}, ruta=ruta), repo
+
+def test_calculadora_y_app_dan_lo_mismo():
+    # El caso de Alberto: casa de 1 dormitorio con solo cama, sofá y tele
+    r, repo = _calc("casa", "1", [{"categoria": "cama", "nombre": "cama", "cantidad": 1},
+                                  {"categoria": "sofa", "nombre": "sofá", "cantidad": 1},
+                                  {"categoria": "televisor", "nombre": "tele", "cantidad": 1}])
+    e, mp = r["estudio"], repo.creados[0]["motorProposal"]
+    assert e["m3"] == 12 and e["personas"] == 3 == mp["detalle"]["personas"]   # antes salían 4
+    assert e["min"] <= mp["price"] <= e["max"]
+    assert "3 personas" in repo.creados[0]["notes"]
+
+def test_calculadora_porte_pequeno_dos_personas_y_furgoneta():
+    r, _ = _calc("porte", None, [{"categoria": "cama", "nombre": "cama", "cantidad": 1},
+                                 {"categoria": "sofa", "nombre": "sofá", "cantidad": 1},
+                                 {"categoria": "televisor", "nombre": "tele", "cantidad": 1}])
+    e = r["estudio"]
+    assert e["personas"] == 2 and e["m3"] < 6 and "furgoneta" in e["vehiculo"]
+
+def test_motor_no_recalcula_lo_que_ya_trae_la_calculadora():
+    import motor_app
+    assert motor_app.debe_calcular(None, {"stage": "solicitud", "motorProposal": {"price": 300}}) is False
+    assert motor_app.debe_calcular(None, {"stage": "solicitud"}) is True

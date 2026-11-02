@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 
 import analitica as an
 import estimador
+import motor
 import formulario_web as fw
 from mcp_escritura import DEFAULT_TARIFAS
 from web_conocimiento import CONOCIMIENTO
@@ -269,19 +270,26 @@ def _osrm(puntos, timeout=8):
     req = urllib.request.Request(url, headers={"User-Agent": "MudanzasDelSur/1.0 (mudanzasdelsur.es)"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         data = json.loads(r.read().decode())
-    return [leg["distance"] / 1000 for leg in data["routes"][0]["legs"]]
+    return [(leg["distance"] / 1000, leg["duration"] / 60) for leg in data["routes"][0]["legs"]]
+
+
+def _tramo(x):
+    """(km, min). Si solo viene el km (pruebas, rutas antiguas), a 60 km/h."""
+    if isinstance(x, (list, tuple)):
+        return round(float(x[0]), 1), round(float(x[1]), 1)
+    return round(float(x), 1), round(float(x), 1)
 
 
 def tramos_km(origen, destino, ruta=_osrm):
-    """(Huelva→carga, carga→descarga, descarga→Huelva) por carretera; si falla, en línea recta × 1,3."""
+    """[(km, min)] Huelva→carga, carga→descarga, descarga→Huelva por carretera; si falla, en línea recta × 1,3."""
     puntos = [HUELVA, origen, destino, HUELVA]
     try:
         legs = ruta(puntos)
         if len(legs) == 3:
-            return tuple(round(x, 1) for x in legs), "carretera"
+            return [_tramo(x) for x in legs], "carretera"
     except Exception as e:  # noqa: BLE001
         print("osrm fallo:", repr(e))
-    return tuple(round(_haversine(puntos[i], puntos[i + 1]) * 1.3, 1) for i in range(3)), "aprox"
+    return [_tramo(_haversine(puntos[i], puntos[i + 1]) * 1.3) for i in range(3)], "aprox"
 
 
 def _coord(lado):
@@ -363,8 +371,14 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
              "embalaje": body.get("embalaje") if body.get("embalaje") in fw.EMBALAJE else "yo",
              "especiales": [fw.ESPECIALES[e] for e in (body.get("especiales") or []) if e in fw.ESPECIALES]}
     legs, fuente_km = tramos_km(o_xy, d_xy, ruta)
-    r = estimador.estimar(datos, legs, {**DEFAULT_TARIFAS, **(tarifas or {})})
-    c = r["cliente"]
+
+    # El mismo motor que calcula en la app: volumen, vehículo, equipo, horas y precio
+    entrada = entrada_motor(datos, body, o_in, d_in, o_xy, d_xy)
+    tarifas = {**DEFAULT_TARIFAS, **(tarifas or {})}
+    coords = {"origen": list(o_xy), "destino": list(d_xy)}
+    avisos = [] if fuente_km == "carretera" else ["Km aproximados (sin ruta por carretera)"]
+    prop = motor.proponer_entrada(entrada, legs, coords, avisos, tarifas, ahora=ahora)
+    c = cliente_desde_motor(prop, datos)
 
     # Lo mismo que el formulario de presupuesto, para que la app lo entienda igual
     muebles = {}
@@ -382,14 +396,14 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
                        "desmontaje": datos["desmontaje"], "embalaje": datos["embalaje"],
                        "especiales": [e for e in (body.get("especiales") or []) if e in fw.ESPECIALES]},
     }
-    for clave_lado, src, xy in (("origen", o_in, o_xy), ("destino", d_in, d_xy)):
+    for clave_lado, src in (("origen", o_in), ("destino", d_in)):
         form[clave_lado] = {"calle": src.get("calle"), "poblacion": src.get("poblacion"),
                             "piso": src.get("piso"), "ascensor": src.get("ascensor"),
                             "aparcamiento": _parking(_metros(src.get("camion_m")))}
 
-    rango = "sin precio (por la distancia, hay que calcularlo a mano)" if c["sin_precio"] else f"{c['min']}-{c['max']} €"
-    nota = (f"🧮 Calculadora web: al cliente le salió {rango} (orientativo) · {c['m3']} m³ · "
-            f"{c['vehiculo']} · {c['personas']} personas · {c['horas']} h · {c['km']} km")
+    rango = "sin precio (hay que calcularlo a mano)" if c["sin_precio"] else f"{c['min']}-{c['max']} €"
+    nota = (f"🧮 Calculadora web: al cliente le salió {rango} (orientativo) · {_n(c['m3'])} m³ · "
+            f"{c['vehiculo']} · {c['personas']} personas · {_n(c['horas'])} h · {c['km']} km")
     camion = [f"{n}: camión a ~{int(m)} m del portal" for n, m in
               (("Carga", datos["origen"]["camion_m"]), ("Descarga", datos["destino"]["camion_m"])) if m is not None]
     ahora_iso = (ahora or datetime.now(timezone.utc)).isoformat()
@@ -401,10 +415,10 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
         "data": {
             "attribution": an.atribucion(body),
             "originCoords": {"lat": o_xy[0], "lng": o_xy[1]}, "destinCoords": {"lat": d_xy[0], "lng": d_xy[1]},
-            "webEstimate": {**c, "supuestos": r["supuestos"], "fuenteKm": fuente_km, "at": ahora_iso},
-            "proposal": {"estimate": r["estimacion"], "result": r["resultado"], "price": r["resultado"]["price"],
-                         "notes": "\n".join(r["supuestos"]), "confidence": "alta" if items else "media",
-                         "at": ahora_iso, "by": "Calculadora web"},
+            "webEstimate": {**c, "supuestos": (prop.get("notes") or "").split("\n") if prop.get("notes") else [],
+                            "fuenteKm": fuente_km, "at": ahora_iso},
+            # La propuesta del motor ya va guardada: la app la enseña igual que si la hubiera calculado al llegar
+            "motorProposal": prop,
         },
     }
     try:
@@ -418,6 +432,53 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
     if not c["sin_precio"]:
         publico.update(min=c["min"], max=c["max"])
     return {"ok": True, "id": res.get("id"), "estudio": publico}
+
+
+# Calculadora (categorías de la IA de las fotos) → objetos del motor
+A_MOTOR = {"bicicleta": "bici", "electrodomestico": "electro", "mueble_tv": "aparador"}
+RANGO = (0.92, 1.15)            # rango que se enseña al cliente alrededor del precio del motor
+
+
+def _n(x):
+    return f"{x:g}".replace(".", ",") if isinstance(x, float) else str(x)
+
+
+def entrada_motor(datos, body, o_in, d_in, o_xy, d_xy):
+    """Los datos de la calculadora en el formato de entrada del motor (como `motor.entrada_desde_solicitud`)."""
+    objs = {}
+    for it in datos["items"]:
+        k = A_MOTOR.get(it["categoria"], it["categoria"])
+        objs[k] = objs.get(k, 0) + it["cantidad"]
+
+    def lado(src, xy, d):
+        piso = d["piso"]
+        return {"direccion": ", ".join(x for x in (src.get("calle"), src.get("poblacion")) if x),
+                "piso": 0 if piso == "bajo" else min(4, int(piso)) if str(piso).isdigit() else None,
+                "ascensor": d["ascensor"], "aparcamiento": _parking(d["camion_m"]), "coords": list(xy)}
+
+    casa = datos["casa"] if datos["tipo"] == "casa" and datos["casa"] in motor.CONFIG["casa_m3"] else None
+    return {"tipo": datos["tipo"], "casa": casa, "items": objs,
+            "otros": "", "cajas_respuesta": None, "desmontaje": datos["desmontaje"], "embalaje": datos["embalaje"],
+            "especiales": [e for e in (body.get("especiales") or []) if e in fw.ESPECIALES],
+            "origen": lado(o_in, o_xy, datos["origen"]), "destino": lado(d_in, d_xy, datos["destino"]),
+            "fotos": len(body.get("fotos") or []), "comentario": bool(fw._txt(body.get("comentario"), 1500)),
+            "fecha": fw._txt(body.get("fecha"), 10)}
+
+
+def cliente_desde_motor(prop, datos):
+    """Lo que ve el cliente: un rango alrededor del precio del motor y el resumen (nunca el desglose)."""
+    r = prop.get("detalle") or (prop.get("referencia") or {}).get("detalle") or {}
+    precio = prop.get("price") or (prop.get("referencia") or {}).get("price")
+    vehiculo = prop.get("vehiculo") or (prop.get("referencia") or {}).get("vehiculo") or ""
+    km_max = motor.cfg()["km_max"]
+    sin_precio = not precio or not r or r.get("km", 0) > km_max
+    c = {"m3": r.get("m3", 0), "vehiculo": vehiculo, "personas": r.get("personas", 2),
+         "horas": float(r.get("horas", 0)), "dias": r.get("dias", 1), "km": r.get("km", 0),
+         "sin_precio": sin_precio, "especiales": datos["especiales"]}
+    if not sin_precio:
+        c["min"] = estimador._r5(precio * RANGO[0])
+        c["max"] = estimador._r5(precio * RANGO[1])
+    return c
 
 
 def contacto(body, ip, repo, ahora=None):
