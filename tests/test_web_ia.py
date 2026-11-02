@@ -115,9 +115,23 @@ def test_estimar_validaciones():
 
 def test_estimar_bot():
     repo = Repo()
-    assert w.estimar({**base(), "web": "spam"}, "1", repo, {}, ruta=lambda p: [1, 1, 1]) == {"ok": True}
+    assert w.estimar({**base(), "web": "spam", "t": 6000}, "1", repo, {}, ruta=lambda p: [1, 1, 1]) == {"ok": True}
     r = w.estimar({**base(), "t": 100}, "1", repo, {}, ruta=lambda p: [1, 1, 1])
     assert r == {"ok": True} and repo.creados == []
+
+def test_estimar_autorrelleno_del_navegador_no_pierde_al_cliente():
+    # Chrome rellena el campo trampa (está fuera de la pantalla) a clientes reales que tardan minutos
+    repo = Repo()
+    r = w.estimar({**base(), "web": "Alberto Gomez Mora"}, "1", repo, {}, ruta=lambda p: [3.0, 12.0, 10.0])
+    assert r["ok"] and r["estudio"]["min"] > 0
+    assert "anti-bots venía relleno" in repo.creados[0]["notes"]
+
+def test_contacto_autorrelleno_se_guarda_con_aviso():
+    repo = Repo()
+    w.contacto({"nombre": "Ana", "telefono": "600111222", "email": "a@b.es", "t": 60000, "web": "x", "mensaje": "hola"}, "1", repo)
+    assert len(repo.creados) == 1 and "anti-bots" in repo.creados[0]["notes"]
+    w.contacto({"nombre": "Bot", "telefono": "600111222", "email": "a@b.es", "t": 5000, "web": "x", "mensaje": "hola"}, "2", repo)
+    assert len(repo.creados) == 1
 
 def test_estimar_lejos_sin_precio():
     repo = Repo()

@@ -31,6 +31,8 @@ MAX_FOTO_BYTES = 6 * 1024 * 1024        # por foto, ya decodificada
 MAX_BODY_BYTES = 24 * 1024 * 1024
 LADO_FOTO = 1600                        # px del lado mayor al guardar
 MIN_MS = 4000                           # menos que esto desde que abrió la página = bot
+TRAMPA_MS = 20000                       # campo trampa relleno pasado este tiempo = autorrelleno del navegador, no bot
+AVISO_TRAMPA = "⚠️ El campo oculto anti-bots venía relleno (seguramente el autorrelleno del navegador). Revisa que sea una persona."
 LIMITE_IP_HORA = 4
 LIMITE_DIA = 40
 
@@ -210,6 +212,23 @@ def huella_ip(ip, dia):
     return hashlib.sha256(f"mds-form|{dia}|{ip}".encode()).hexdigest()[:20]
 
 
+def _ms(body):
+    try:
+        return float(body.get("t") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def trampa_rellena(body):
+    return bool(_txt(body.get("web"), 200))
+
+
+def es_bot(body):
+    """Campo trampa relleno Y envío rápido. Una persona con el autorrelleno del navegador también
+    rellena el campo trampa (está fuera de la pantalla, no oculto), pero tarda mucho más en enviar."""
+    return trampa_rellena(body) and _ms(body) < TRAMPA_MS
+
+
 def procesar(body, ip, repo, ahora=None, extra=None):
     """Valida y guarda una solicitud del formulario. Devuelve {'ok': True, ...}.
 
@@ -221,14 +240,10 @@ def procesar(body, ip, repo, ahora=None, extra=None):
     if not isinstance(body, dict):
         raise FormError(400, "No se ha podido leer el formulario. " + MSG_WHATSAPP)
 
-    # 1) Bots: campo trampa o envío instantáneo → "ok" sin guardar
-    if _txt(body.get("web"), 200):
+    # 1) Bots: campo trampa con envío rápido, o envío instantáneo → "ok" sin guardar
+    if es_bot(body):
         return {"ok": True, "ignorada": "trampa"}
-    try:
-        ms = float(body.get("t") or 0)
-    except (TypeError, ValueError):
-        ms = 0
-    if ms < MIN_MS:
+    if _ms(body) < MIN_MS:
         return {"ok": True, "ignorada": "rapida"}
 
     # 2) Datos obligatorios
@@ -282,6 +297,8 @@ def procesar(body, ip, repo, ahora=None, extra=None):
     if body.get("fotos_whatsapp"):
         notas.append("📷 Dice que mandará las fotos por WhatsApp")
     notas += [str(x) for x in extra.get("notas") or []]
+    if trampa_rellena(body):
+        notas.append(AVISO_TRAMPA)
     notas.append(extra.get("origen_txt") or "🌐 Llegó por el formulario web")
 
     data = {

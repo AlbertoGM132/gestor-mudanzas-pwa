@@ -339,8 +339,9 @@ def _parking(m):
 
 def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
     body = body if isinstance(body, dict) else {}
-    # Bots: igual que el formulario (campo trampa / envío instantáneo)
-    if fw._txt(body.get("web"), 200):
+    # Bots: igual que el formulario (campo trampa con envío rápido / envío instantáneo).
+    # Ojo: el autorrelleno de Chrome rellena el campo trampa a clientes de verdad; esos se guardan con aviso.
+    if fw.es_bot(body):
         return {"ok": True}
     if not body.get("consentimiento"):
         raise WebError(400, "Marca la casilla de privacidad para poder enviarte el estudio.")
@@ -393,7 +394,8 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
               (("Carga", datos["origen"]["camion_m"]), ("Descarga", datos["destino"]["camion_m"])) if m is not None]
     ahora_iso = (ahora or datetime.now(timezone.utc)).isoformat()
     extra = {
-        "notas": [nota] + camion + (["⚠️ Km aproximados (sin ruta por carretera)"] if fuente_km != "carretera" else []),
+        "notas": [nota] + camion + (["⚠️ Km aproximados (sin ruta por carretera)"] if fuente_km != "carretera" else [])
+                 + ([fw.AVISO_TRAMPA] if fw.trampa_rellena(body) else []),
         "origen_txt": "🌐 Llegó por la calculadora de la web",
         "createdBy": "Calculadora web",
         "data": {
