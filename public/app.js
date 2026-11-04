@@ -80,7 +80,9 @@ const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g
 const fmt = n => Number(n||0).toFixed(2);
 let toastT;
 function toast(msg,type=''){clearTimeout(toastT);const t=$('toast');t.textContent=msg;t.className='show '+type;toastT=setTimeout(()=>t.className='',3200)}
-function statusColor(s){return s==='completado'?'#15803d':s==='en_curso'?'#d97706':'#4f46e5'}
+// Colores de estado: vienen del CSS (cambian con el tema claro/oscuro)
+function statusColor(s){return s==='completado'?'var(--st-done)':s==='en_curso'?'var(--st-curso)':'var(--st-pend)'}
+const statusTint=sc=>`color-mix(in srgb,${sc} 15%,transparent)`;
 function statusLabel(s){return s==='completado'?'Completado':s==='en_curso'?'En curso':'Pendiente'}
 function pad(n){return String(n).padStart(2,'0')}
 function dateKey(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
@@ -152,7 +154,7 @@ function showView(name){
   curView=name;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   $('view-'+name).classList.add('active');
-  const hasGlobalHeader=['cal','tarifas','finanzas','solicitudes'].includes(name);
+  const hasGlobalHeader=['cal','tarifas','finanzas','solicitudes','presupuestos'].includes(name);
   const desk=document.body.classList.contains('desktop');
   $('g-header').style.display=hasGlobalHeader||desk?'flex':'none';
   $('bottom-nav').style.display=hasGlobalHeader||desk?'flex':'none';
@@ -207,6 +209,33 @@ document.addEventListener('keydown',e=>{
   if(curView==='detail')$('btn-back-day').click();
   else if(curView==='form')$('btn-form-cancel').click();
 });
+// Móvil: deslizar desde el borde izquierdo vuelve atrás (como en iOS). Solo en el día y en la ficha,
+// no en el formulario, para no perder lo que se está escribiendo por un roce.
+(()=>{
+  const BACK={day:'btn-back-cal',detail:'btn-back-day'};
+  let x0=0,y0=0,dx=0,on=false,v=null,back=null;
+  const views=$('views');
+  views.addEventListener('touchstart',e=>{
+    on=false;
+    if(document.body.classList.contains('desktop')||!BACK[curView]||e.touches.length!==1)return;
+    const t=e.touches[0];if(t.clientX>28)return;
+    x0=t.clientX;y0=t.clientY;dx=0;on=true;v=$('view-'+curView);back=BACK[curView];
+  },{passive:true});
+  views.addEventListener('touchmove',e=>{
+    if(!on)return;
+    const t=e.touches[0];dx=t.clientX-x0;
+    if(dx<16&&Math.abs(t.clientY-y0)>Math.abs(dx)){on=false;v.style.transform='';v.classList.remove('swiping');return;}
+    if(dx>0){v.classList.add('swiping');v.style.transform=`translateX(${dx}px)`;}
+  },{passive:true});
+  const fin=()=>{
+    if(!on)return;on=false;v.classList.remove('swiping');v.classList.add('swipe-back');
+    const vista=v,boton=back,ok=dx>90;
+    if(ok){vista.style.transform='translateX(100%)';vista.style.opacity='0';}
+    else vista.style.transform='';
+    setTimeout(()=>{vista.classList.remove('swipe-back');vista.style.transform='';vista.style.opacity='';if(ok)$(boton).click();},220);
+  };
+  views.addEventListener('touchend',fin);views.addEventListener('touchcancel',fin);
+})();
 
 // ════════════════════════════════════════
 //  SOLICITUDES (embudo: trabajos sin fecha)
@@ -374,7 +403,7 @@ function renderDayView(){
       <div class="job-card-body">
         <div class="job-card-top">
           <div class="job-client-name">${esc(job.clientName||'Sin nombre')}</div>
-          <div class="status-badge" style="background:${sc}22;color:${sc}">${statusLabel(job.status)}</div>
+          <div class="status-badge" style="background:${statusTint(sc)};color:${sc}">${statusLabel(job.status)}</div>
         </div>
         <div class="job-time-row">⏰ ${job.startTime||'--:--'}${job.endTime?` – ${job.endTime}`:''}${job._ofDays>1?` · <strong>Día ${job._day} de ${job._ofDays}</strong>`:''}</div>
         ${job.location||(job.services||[]).length?`<div class="job-detail-row">🏷 ${esc([job.location,(job.services||[]).join(', ')].filter(Boolean).join(' · '))}</div>`:''}
@@ -506,7 +535,7 @@ function renderDetailView(){
           <div class="detail-client-name">${esc(job.clientName||'Sin nombre')}</div>
           <div class="detail-phone">${esc([job.location,job.phone].filter(Boolean).join(' · '))}</div>
         </div>
-        <div class="status-badge" style="margin-left:auto;background:${sc}22;color:${sc}">${statusLabel(job.status)}</div>
+        <div class="status-badge" style="margin-left:auto;background:${statusTint(sc)};color:${sc}">${statusLabel(job.status)}</div>
       </div>
       ${(job.services||[]).length?`<div class="mat-tags-row" style="margin-top:10px">${job.services.map(s=>`<span class="mat-tag active">${esc(s)}</span>`).join('')}</div>`:''}
     </div>
@@ -1408,7 +1437,7 @@ function renderFormTab(){
         <div class="form-section-title">Estado</div>
         <div class="status-row">
           ${['pendiente','en_curso','completado'].map(s=>`
-            <button class="status-opt" data-s="${s}" style="${f.status===s?`background:${statusColor(s)};color:#fff;border-color:${statusColor(s)}`:''}">
+            <button class="status-opt" data-s="${s}" style="${f.status===s?`background:${statusColor(s)};color:var(--onStatus);border-color:${statusColor(s)}`:''}">
               ${statusLabel(s)}
             </button>`).join('')}
         </div>

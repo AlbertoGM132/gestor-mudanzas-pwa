@@ -5,8 +5,9 @@
 // ══════════════════════════════════════════════════════════════
 
 // Versión del caché de la PWA
-const CACHE_NAME  = 'mudanza-v3';
-const CACHE_FILES = ['/', '/index.html', '/manifest.json'];
+const CACHE_NAME  = 'mudanza-v4';
+const CACHE_FILES = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.json',
+                     '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon.svg', '/icons/apple-touch-icon.png'];
 
 // ── Firebase SDK (modo compat, requerido en SW) ──
 importScripts('https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js');
@@ -31,13 +32,13 @@ messaging.onBackgroundMessage(payload => {
   console.log('[SW] Notificación en background:', payload);
 
   // Los avisos del servidor (p. ej. nueva solicitud del formulario) vienen solo con datos
-  const { title = '📦 MudanzaPro', body = 'Nueva actualización', icon = '/icon-192.png' }
+  const { title = '📦 MudanzaPro', body = 'Nueva actualización', icon = '/icons/icon-192.png' }
     = payload.notification || payload.data || {};
 
   self.registration.showNotification(title, {
     body,
     icon,
-    badge:  '/icon-192.png',
+    badge:  '/icons/icon-192.png',
     vibrate: [200, 100, 200],
     data:   payload.data || {},
     actions: [{ action: 'open', title: 'Abrir' }]
@@ -89,6 +90,6 @@ self.addEventListener('fetch', event => {
         caches.open(CACHE_NAME).then(c => c.put(event.request, copy));
       }
       return res;
-    }).catch(() => caches.match(event.request))
+    }).catch(() => caches.match(event.request, { ignoreSearch: true }))
   );
 });
