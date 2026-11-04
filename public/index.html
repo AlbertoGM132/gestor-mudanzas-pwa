@@ -1,46 +1,95 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme-pref="auto">
 <head>
   <meta charset="UTF-8" />
   <!-- En el dominio de clientes (presupuesto.mudanzasdelsur.es) se va directo al formulario -->
   <script>if(location.hostname.indexOf('presupuesto.')===0)location.replace('/presupuesto');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="MudanzaPro" />
+  <meta name="color-scheme" content="light dark" />
   <meta name="theme-color" content="#1d2433" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <title>MudanzaPro</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
-
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <!-- Tema claro / oscuro / automático. Va antes del CSS para que no parpadee al abrir. -->
+  <script>
+  (function(){
+    var CLAVE='mp_tema', ORDEN=['auto','light','dark'], TXT={auto:'automático',light:'claro',dark:'oscuro'};
+    var mq=window.matchMedia?matchMedia('(prefers-color-scheme: dark)'):null;
+    function leer(){try{var t=localStorage.getItem(CLAVE);return ORDEN.indexOf(t)>=0?t:'auto'}catch(e){return 'auto'}}
+    function aplicar(t){
+      var h=document.documentElement;h.setAttribute('data-theme-pref',t);
+      if(t==='auto')h.removeAttribute('data-theme');else h.setAttribute('data-theme',t);
+      var oscuro=t==='dark'||(t==='auto'&&mq&&mq.matches);
+      var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',oscuro?'#12151c':'#1d2433');
+      var bs=document.querySelectorAll('.btn-theme');for(var i=0;i<bs.length;i++){bs[i].setAttribute('aria-label','Tema: '+TXT[t]+'. Toca para cambiar');bs[i].title='Tema: '+TXT[t];}
+      return t;
+    }
+    aplicar(leer());
+    if(mq&&mq.addEventListener)mq.addEventListener('change',function(){aplicar(leer())});
+    document.addEventListener('click',function(e){
+      if(!e.target.closest||!e.target.closest('.btn-theme'))return;
+      var t=ORDEN[(ORDEN.indexOf(leer())+1)%ORDEN.length];
+      try{localStorage.setItem(CLAVE,t)}catch(err){}
+      aplicar(t);
+      var toast=document.getElementById('toast');
+      if(toast){toast.textContent='Tema '+TXT[t];toast.className='show';clearTimeout(window.__temaT);window.__temaT=setTimeout(function(){toast.className=''},1600);}
+    });
+    document.addEventListener('DOMContentLoaded',function(){aplicar(leer())});
+  })();
+  </script>
+  <link rel="stylesheet" href="styles.css?v=21" />
 </head>
 <body>
+<!-- Iconos (estilo SF Symbols, dibujados a mano) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-truck" viewBox="0 0 24 24"><path d="M2 6.5A1.5 1.5 0 0 1 3.5 5h9A1.5 1.5 0 0 1 14 6.5V16H2z"/><path d="M14 9h3.6a1 1 0 0 1 .8.4l2.4 3.2a1 1 0 0 1 .2.6V16h-7"/><path d="M2 16h20"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/><path d="M7.5 13.5h.01M12 13.5h.01M16.5 13.5h.01M7.5 17h.01M12 17h.01" stroke-width="2.6"/></symbol>
+    <symbol id="i-tray" viewBox="0 0 24 24"><path d="M3 13.5V18a2.5 2.5 0 0 0 2.5 2.5h13A2.5 2.5 0 0 0 21 18v-4.5"/><path d="M3 13.5h5l1.5 2.5h5l1.5-2.5h5"/><path d="M12 3v8.5M8.5 8l3.5 3.5L15.5 8"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 4.5v6.4a2 2 0 0 0 .6 1.4l8.1 8.1a2 2 0 0 0 2.8 0l5.8-5.8a2 2 0 0 0 0-2.8l-8.1-8.1A2 2 0 0 0 10.8 3H4.5A1.5 1.5 0 0 0 3 4.5z"/><circle cx="8" cy="8" r="1.4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20.5h16"/><rect x="5" y="11" width="3.4" height="6.5" rx="1"/><rect x="10.3" y="6.5" width="3.4" height="11" rx="1"/><rect x="15.6" y="3.5" width="3.4" height="14" rx="1"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6.5 2.5h7.2l4.8 4.8v12.2a2 2 0 0 1-2 2h-10a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2z"/><path d="M13.5 2.5V7.5h5M8.5 12.5h7M8.5 16h7"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 4.5 7.5 12l7.5 7.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 21h4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="11" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></symbol>
+  </defs>
+</svg>
+
 <div id="app">
 
 <!-- ════ AUTH ════ -->
 <div id="auth-screen">
   <div class="top-header">
     <div class="logo-row">
-      <span class="logo-icon">🚛</span>
+      <span class="logo-icon" aria-hidden="true"><svg class="ico"><use href="#i-truck"/></svg></span>
       <div><div class="logo-title">MudanzaPro</div><div class="logo-sub">Gestión de trabajos</div></div>
     </div>
+    <button class="icon-btn btn-theme" type="button" aria-label="Cambiar tema">
+      <svg class="ico ti-auto"><use href="#i-auto"/></svg><svg class="ico ti-light"><use href="#i-sun"/></svg><svg class="ico ti-dark"><use href="#i-moon"/></svg>
+    </button>
   </div>
   <div class="auth-body">
     <div class="auth-card">
-      <div style="display:flex;align-items:center;gap:11px">
-        <span style="font-size:2rem">🔐</span>
+      <div class="auth-head">
+        <span class="auth-ico" aria-hidden="true"><svg class="ico"><use href="#i-lock"/></svg></span>
         <div>
-          <div style="font-size:1.1rem;font-weight:800;color:var(--accent)">Acceder</div>
-          <div style="font-size:.7rem;color:var(--muted)">Solo equipo autorizado</div>
+          <div class="auth-title">Acceder</div>
+          <div class="auth-sub">Solo equipo autorizado</div>
         </div>
       </div>
-      <div class="auth-field"><label>Correo</label><input type="email" id="inp-email" placeholder="tu@correo.com" autocomplete="email"/></div>
-      <div class="auth-field"><label>Contraseña</label><input type="password" id="inp-pass" placeholder="••••••••" autocomplete="current-password"/></div>
-      <div class="auth-err" id="auth-err"></div>
-      <button class="btn btn-accent" id="btn-login" style="width:100%;padding:13px;font-size:.95rem">Entrar</button>
+      <div class="auth-field"><label for="inp-email">Correo</label><input type="email" id="inp-email" placeholder="tu@correo.com" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false"/></div>
+      <div class="auth-field"><label for="inp-pass">Contraseña</label><input type="password" id="inp-pass" placeholder="••••••••" autocomplete="current-password"/></div>
+      <div class="auth-err" id="auth-err" role="alert"></div>
+      <button class="btn btn-accent btn-block" id="btn-login">Entrar</button>
     </div>
   </div>
 </div>
@@ -50,10 +99,15 @@
 
   <div class="top-header" id="g-header">
     <div class="logo-row">
-      <span class="logo-icon">🚛</span>
+      <span class="logo-icon" aria-hidden="true"><svg class="ico"><use href="#i-truck"/></svg></span>
       <div><div class="logo-title">MudanzaPro</div><div class="logo-sub" id="user-label">—</div></div>
     </div>
-    <button class="btn btn-ghost btn-sm" id="btn-logout">Salir</button>
+    <div class="header-actions">
+      <button class="icon-btn btn-theme" type="button" aria-label="Cambiar tema">
+        <svg class="ico ti-auto"><use href="#i-auto"/></svg><svg class="ico ti-light"><use href="#i-sun"/></svg><svg class="ico ti-dark"><use href="#i-moon"/></svg>
+      </button>
+      <button class="btn btn-ghost btn-sm" id="btn-logout">Salir</button>
+    </div>
   </div>
 
   <div id="views">
@@ -61,30 +115,30 @@
     <!-- ── CALENDARIO ── -->
     <div class="view active" id="view-cal">
       <div id="notif-banner">
-        <span style="font-size:1.05rem">🔔</span>
+        <span class="notif-ico" aria-hidden="true"><svg class="ico"><use href="#i-bell"/></svg></span>
         <p>Activa notificaciones para avisos del equipo.</p>
         <button id="btn-notif">Activar</button>
       </div>
       <div class="cal-nav">
-        <button class="cal-nav-btn" id="cal-prev">‹</button>
-        <div class="cal-month-title" id="cal-month"></div>
-        <button class="cal-nav-btn" id="cal-next">›</button>
+        <button class="cal-nav-btn" id="cal-prev" aria-label="Mes anterior">‹</button>
+        <div class="cal-month-title" id="cal-month" aria-live="polite"></div>
+        <button class="cal-nav-btn" id="cal-next" aria-label="Mes siguiente">›</button>
       </div>
       <div class="week-row" id="week-row"></div>
       <div class="cal-grid" id="cal-grid"></div>
       <div class="legend">
-        <div class="legend-item"><div class="legend-dot" style="background:var(--indigo)"></div><span class="legend-text">Pendiente</span></div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div><span class="legend-text">En curso</span></div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div><span class="legend-text">Completado</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--st-pend)"></div><span class="legend-text">Pendiente</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--st-curso)"></div><span class="legend-text">En curso</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--st-done)"></div><span class="legend-text">Completado</span></div>
       </div>
     </div>
 
     <!-- ── DÍA ── -->
     <div class="view" id="view-day">
       <div class="sub-header">
-        <button class="btn-back" id="btn-back-cal">‹ Calendario</button>
+        <button class="btn-back" id="btn-back-cal"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg>Calendario</button>
         <div class="sub-title" id="day-title"></div>
-        <button class="btn btn-accent btn-sm" id="btn-new-job">+ Trabajo</button>
+        <button class="btn btn-accent btn-sm" id="btn-new-job"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>Trabajo</button>
       </div>
       <div class="day-content" id="day-content"></div>
     </div>
@@ -92,7 +146,7 @@
     <!-- ── FORMULARIO ── -->
     <div class="view" id="view-form">
       <div class="sub-header">
-        <button class="btn-back" id="btn-form-cancel">✕ Cancelar</button>
+        <button class="btn-back" id="btn-form-cancel">Cancelar</button>
         <div class="sub-title" id="form-title">Nuevo trabajo</div>
         <button class="btn btn-accent btn-sm" id="btn-save-job">Guardar</button>
       </div>
@@ -103,7 +157,7 @@
     <!-- ── DETALLE ── -->
     <div class="view" id="view-detail">
       <div class="sub-header">
-        <button class="btn-back" id="btn-back-day">‹ Volver</button>
+        <button class="btn-back" id="btn-back-day"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg>Volver</button>
         <div class="sub-title">Detalle del trabajo</div>
         <button class="btn btn-ghost btn-sm" id="btn-edit-job">Editar</button>
       </div>
@@ -113,45 +167,45 @@
 
     <!-- ── SOLICITUDES ── -->
     <div class="view" id="view-solicitudes">
-      <div class="sub-header" style="justify-content:center">
-        <div class="sub-title">📥 Solicitudes</div>
+      <div class="sub-header large-title">
+        <h1 class="sub-title">Solicitudes</h1>
       </div>
       <div class="pres-content" id="solicitudes-content"></div>
     </div>
 
     <!-- ── PRESUPUESTOS ── -->
     <div class="view" id="view-presupuestos">
-      <div class="sub-header" style="justify-content:center">
-        <div class="sub-title">📄 Presupuestos</div>
+      <div class="sub-header large-title">
+        <h1 class="sub-title">Presupuestos</h1>
       </div>
       <div class="pres-content" id="pres-content"></div>
     </div>
 
     <!-- ── TARIFAS ── -->
     <div class="view" id="view-tarifas">
-      <div class="sub-header" style="justify-content:center">
-        <div class="sub-title">💰 Tarifas</div>
+      <div class="sub-header large-title">
+        <h1 class="sub-title">Tarifas</h1>
       </div>
       <div class="tarifas-content" id="tarifas-content"></div>
     </div>
 
     <!-- ── FINANZAS ── -->
     <div class="view" id="view-finanzas">
-      <div class="sub-header" style="justify-content:center">
-        <div class="sub-title">📊 Finanzas</div>
+      <div class="sub-header large-title">
+        <h1 class="sub-title">Finanzas</h1>
       </div>
       <div class="finanzas-content" id="finanzas-content"></div>
     </div>
 
   </div><!-- /views -->
 
-  <!-- BOTTOM NAV -->
-  <nav id="bottom-nav">
-    <button class="nav-btn active" data-view="cal"><span class="nav-icon">📅</span>Calendario</button>
-    <button class="nav-btn" data-view="solicitudes"><span class="nav-icon">📥<span id="pipe-badge" class="nav-badge" style="display:none"></span></span>Solicitudes</button>
-    <button class="nav-btn" data-view="tarifas"><span class="nav-icon">💰</span>Tarifas</button>
-    <button class="nav-btn" data-view="finanzas"><span class="nav-icon">📊</span>Finanzas</button>
-    <button class="nav-btn" data-view="presupuestos"><span class="nav-icon">📄</span>Presupuestos</button>
+  <!-- BARRA DE PESTAÑAS -->
+  <nav id="bottom-nav" aria-label="Secciones">
+    <button class="nav-btn active" data-view="cal"><span class="nav-icon"><svg class="ico"><use href="#i-cal"/></svg></span>Calendario</button>
+    <button class="nav-btn" data-view="solicitudes"><span class="nav-icon"><svg class="ico"><use href="#i-tray"/></svg><span id="pipe-badge" class="nav-badge" style="display:none"></span></span>Solicitudes</button>
+    <button class="nav-btn" data-view="tarifas"><span class="nav-icon"><svg class="ico"><use href="#i-tag"/></svg></span>Tarifas</button>
+    <button class="nav-btn" data-view="finanzas"><span class="nav-icon"><svg class="ico"><use href="#i-chart"/></svg></span>Finanzas</button>
+    <button class="nav-btn" data-view="presupuestos"><span class="nav-icon"><svg class="ico"><use href="#i-doc"/></svg></span>Presupuestos</button>
   </nav>
 
 </div><!-- /app-screen -->
@@ -159,11 +213,11 @@
 
 <!-- ── CIERRE ECONÓMICO MODAL ── -->
 <div id="close-overlay">
-  <div id="close-box">
+  <div id="close-box" role="dialog" aria-modal="true" aria-labelledby="close-modal-title">
     <div class="modal-handle"></div>
     <div class="modal-header">
       <div class="modal-title" id="close-modal-title">✅ Cerrar trabajo</div>
-      <button class="modal-close" id="close-modal-x">✕</button>
+      <button class="modal-close" id="close-modal-x" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body" id="close-modal-body"></div>
     <div class="modal-footer">
@@ -173,12 +227,12 @@
   </div>
 </div>
 
-<div id="lb"><button id="lb-x">✕</button><img id="lb-img" alt=""/></div>
-<div id="toast"></div>
+<div id="lb"><button id="lb-x" aria-label="Cerrar foto">✕</button><img id="lb-img" alt=""/></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <!-- ══════════════════════════════════
      🔥 FIREBASE
      ══════════════════════════════════ -->
-<script type="module" src="app.js?v=20"></script>
+<script type="module" src="app.js?v=21"></script>
 </body>
 </html>
