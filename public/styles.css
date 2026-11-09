@@ -602,3 +602,29 @@ body:not(.desktop) :is(#view-day,#view-detail,#view-form).active{animation:view-
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
+
+/* ── Gastos con ticket ── */
+.exp-list{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+.exp-item{display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 0;border-bottom:.5px solid var(--sep)}
+.exp-thumb{width:44px;height:44px;border-radius:var(--r-sm);object-fit:cover;flex-shrink:0;background:var(--fill);cursor:pointer}
+.exp-noimg{display:flex;align-items:center;justify-content:center;font-size:1.2rem;cursor:default}
+.exp-body{flex:1;min-width:0}
+.exp-title{font-size:var(--t-subhead);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.exp-sub{font-size:var(--t-caption);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.exp-amount{font-size:var(--t-subhead);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.exp-del{background:none;border:none;color:var(--muted2);width:var(--tap);height:var(--tap);border-radius:50%;cursor:pointer;flex-shrink:0;font-size:.85rem}
+.exp-del:active{background:var(--dangerSoft)}
+.exp-actions{display:flex;gap:8px;flex-wrap:wrap}
+.exp-actions .btn{flex:1 1 auto}
+.exp-draft{background:var(--accentSoft);border-radius:var(--radius);padding:12px;display:flex;flex-direction:column;gap:12px;margin-top:4px}
+.exp-draft-top{display:flex;align-items:center;gap:12px}
+.exp-draft-top .exp-thumb{width:56px;height:56px}
+.exp-draft-msg{font-size:var(--t-subhead);font-weight:600;display:flex;align-items:center;gap:8px}
+.exp-draft .fi input{background:var(--surface)}
+.exp-draft .mat-tag{background:var(--surface)}
+.exp-draft .mat-tag.active{background:var(--accentFill);color:var(--onAccent)}
+.worker-bonus{width:64px}
+details.close-more>summary{cursor:pointer;list-style:none;min-height:var(--tap);display:flex;align-items:center}
+details.close-more>summary::-webkit-details-marker{display:none}
+details.close-more>summary::after{content:"Mostrar";margin-left:auto;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:600}
+details.close-more[open]>summary::after{content:"Ocultar"}

@@ -7,7 +7,7 @@ import { initializeApp }    from "https://www.gstatic.com/firebasejs/11.6.0/fire
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
                             from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, doc, setDoc, deleteDoc,
-         query, where, onSnapshot, orderBy, serverTimestamp, getDoc }
+         query, where, onSnapshot, orderBy, serverTimestamp, getDoc, arrayUnion }
                             from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getStorage, ref as sRef, uploadBytesResumable, getDownloadURL, deleteObject }
                             from "https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js";
@@ -434,7 +434,7 @@ $('btn-new-job').onclick=()=>openNewJob(false);
 //  JOB DETAIL
 // ════════════════════════════════════════
 function stripDay(job){const{_day,_ofDays,...rest}=job;return rest}
-function openJobDetail(job){curJob=stripDay(job);formState={...curJob};formPhotos=[...(curJob.photos||[])];renderDetailView();showView('detail');}
+function openJobDetail(job){originEdit=false;if(expDraft&&expDraft.ctx==='detail')expDraft=null;curJob=stripDay(job);formState={...curJob};formPhotos=[...(curJob.photos||[])];renderDetailView();showView('detail');}
 
 // Datos importantes que faltan (para avisar antes del día del trabajo)
 function missingInfo(job){
@@ -466,6 +466,168 @@ function pendingJobsOn(ds){
   const out=new Map();
   (jobsCache[ds]||[]).forEach(j=>{if(j.status!=='completado')out.set(j.id,stripDay(j));});
   return [...out.values()].sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+}
+
+// ════════════════════════════════════════
+//  CÓMO NOS CONOCIÓ (mismos códigos que la analítica del panel)
+// ════════════════════════════════════════
+const ORIGINS=[['google_ads','Google Ads'],['google','Google'],['google_perfil','Perfil de Google'],['instagram','Instagram'],
+  ['tiktok','TikTok'],['facebook','Facebook'],['boca_a_boca','Boca a boca'],['repetidor','Ya fue cliente'],
+  ['offline','Flyer o furgoneta'],['otras_webs','Otra web']];
+const ORIGIN_LABEL=Object.fromEntries([...ORIGINS,['web','La web'],['presupuesto_app','Formulario de la web'],
+  ['whatsapp','WhatsApp'],['telefono','Llamada'],['directo','La web'],['email','Email'],['meta','Anuncio de Meta'],['buscadores','Buscadores']]);
+// La web lo apunta sola (attribution / source); a mano, el campo «origin»
+function jobOrigin(j){
+  const a=j.attribution&&j.attribution.fuente;
+  if(a)return{code:a,auto:true};
+  if(j.origin)return{code:j.origin,auto:false};
+  if(j.source==='web')return{code:j.createdBy==='Formulario web'?'presupuesto_app':'web',auto:true};
+  return null;
+}
+const originChips=(cur,attr)=>`<div class="mat-grid">${ORIGINS.map(([c,l])=>`<button class="mat-tag${cur===c?' active':''}" ${attr}="${c}">${esc(l)}</button>`).join('')}</div>`;
+let originEdit=false;
+function expSectionInner(job){
+  const done=job.status==='completado';
+  return `<div class="detail-section-title">🧾 Gastos del trabajo</div>${expensesHTML([job],{editable:!done,addTo:job.id,ctx:'detail'})}`;
+}
+function bindDetailExpenses(){
+  const sec=$('exp-section');if(!sec||!curJob)return;
+  const rr=()=>{const s=$('exp-section');if(!s)return;s.innerHTML=expSectionInner(curJob);bindDetailExpenses();};
+  bindExpenses(sec,id=>id===curJob.id?curJob:null,'detail',rr);
+}
+
+// ════════════════════════════════════════
+//  GASTOS CON TICKET: foto en el momento → la IA lee importe y tipo → el cierre se rellena solo
+// ════════════════════════════════════════
+const EXPENSE_TYPES=[{id:'vehiculo',icon:'🚛',label:'Alquiler vehículo'},{id:'gasoil',icon:'⛽',label:'Gasoil'},
+  {id:'material',icon:'📦',label:'Material'},{id:'comida',icon:'🥪',label:'Comida'},{id:'peaje',icon:'🅿️',label:'Peaje o parking'},
+  {id:'alojamiento',icon:'🛏',label:'Alojamiento'},{id:'otros',icon:'🧾',label:'Otros'}];
+const expType=id=>EXPENSE_TYPES.find(t=>t.id===id)||EXPENSE_TYPES.at(-1);
+const jobExpenses=j=>Array.isArray(j&&j.expenses)?j.expenses:[];
+function ticketTotals(jobs){
+  const t={};
+  jobs.forEach(j=>jobExpenses(j).forEach(e=>{t[e.type]=Math.round(((t[e.type]||0)+Number(e.amount||0))*100)/100;}));
+  return t;
+}
+let expDraft=null;   // gasto a medio apuntar: {jobId, ctx, photo, preview, amount, type, note, merchant, date, ia, reading, msg}
+
+function expensesHTML(jobs,{editable=true,addTo=null,ctx='detail'}={}){
+  const items=jobs.flatMap(j=>jobExpenses(j).map(e=>({e,j})));
+  const total=items.reduce((a,{e})=>a+Number(e.amount||0),0);
+  const many=jobs.length>1;
+  const d=expDraft&&expDraft.ctx===ctx&&jobs.some(j=>j.id===expDraft.jobId)?expDraft:null;
+  return `${items.length?`<div class="exp-list">${items.map(({e,j})=>{const t=expType(e.type);return `
+      <div class="exp-item">
+        ${e.photo&&e.photo.url?`<img class="exp-thumb" src="${esc(e.photo.url)}" alt="Ticket de ${esc(t.label)}" loading="lazy" onclick="openLb(this.src)">`:`<span class="exp-thumb exp-noimg" aria-hidden="true">${t.icon}</span>`}
+        <div class="exp-body">
+          <div class="exp-title">${esc(t.label)}${e.merchant?` · ${esc(e.merchant)}`:''}</div>
+          <div class="exp-sub">${e.photo?'Con ticket':'Sin ticket'}${many?` · ${esc(j.clientName||'')}`:''}${e.note?` · ${esc(e.note)}`:''}</div>
+        </div>
+        <div class="exp-amount">${fmt(e.amount)} €</div>
+        ${editable?`<button class="exp-del" data-expdel="${esc(e.id)}" data-expjob="${esc(j.id)}" aria-label="Borrar gasto">✕</button>`:''}
+      </div>`;}).join('')}
+      <div class="calc-row total"><span>Total apuntado</span><span>${fmt(Math.round(total*100)/100)} €</span></div></div>`
+    :`<div class="notes-text" style="color:var(--muted)">${editable?'Haz una foto a cada ticket en el momento (gasoil, alquiler, comida…) y el cierre se rellena solo.':'Sin gastos apuntados.'}</div>`}
+    ${d?draftHTML(d):''}
+    ${editable&&!d&&addTo?`<div class="exp-actions">
+      <button class="btn btn-accent btn-sm" data-expphoto="${esc(addTo)}">📷 Foto del ticket</button>
+      <button class="btn btn-ghost btn-sm" data-expmanual="${esc(addTo)}">✏️ Gasto sin ticket</button>
+    </div>`:''}`;
+}
+function draftHTML(d){
+  const img=(d.photo&&d.photo.url)||d.preview;
+  return `<div class="exp-draft">
+    <div class="exp-draft-top">${img?`<img class="exp-thumb" src="${esc(img)}" alt="Ticket">`:''}
+      <div class="exp-draft-msg">${d.reading?'<span class="spin"></span> Leyendo el ticket…':esc(d.msg||'Pon el importe y el tipo de gasto')}</div></div>
+    <div class="fi"><label for="exp-amount">Importe (€)</label><input id="exp-amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00" value="${esc(String(d.amount??''))}" ${d.reading?'disabled':''}></div>
+    <div class="mat-grid">${EXPENSE_TYPES.map(t=>`<button class="mat-tag${d.type===t.id?' active':''}" data-exptype="${t.id}">${t.icon} ${esc(t.label)}</button>`).join('')}</div>
+    <div class="fi"><label for="exp-note">Nota (opcional)</label><input id="exp-note" placeholder="${d.photo?'Detalle del ticket':'Ej.: desayuno del equipo'}" value="${esc(d.note||'')}"></div>
+    <div class="exp-actions"><button class="btn btn-ghost btn-sm" id="exp-cancel">Cancelar</button><button class="btn btn-accent btn-sm" id="exp-save" ${d.reading?'disabled':''}>Guardar gasto</button></div>
+  </div>`;
+}
+function syncDraft(){
+  if(!expDraft)return;
+  const a=$('exp-amount'),n=$('exp-note');
+  if(a&&!a.disabled)expDraft.amount=a.value;
+  if(n)expDraft.note=n.value;
+}
+function bindExpenses(root,lookup,ctx,rerender){
+  root.querySelectorAll('[data-expphoto]').forEach(b=>b.onclick=()=>pickTicketPhoto(b.dataset.expphoto,ctx,rerender));
+  root.querySelectorAll('[data-expmanual]').forEach(b=>b.onclick=()=>{
+    expDraft={jobId:b.dataset.expmanual,ctx,photo:null,amount:'',type:'comida',note:'',reading:false};
+    rerender();setTimeout(()=>{const a=$('exp-amount');if(a)a.focus();},60);});
+  root.querySelectorAll('[data-exptype]').forEach(b=>b.onclick=()=>{syncDraft();expDraft.type=b.dataset.exptype;rerender();});
+  const c=root.querySelector('#exp-cancel');
+  if(c)c.onclick=async()=>{const d=expDraft;expDraft=null;rerender();
+    if(d&&d.photo&&d.photo.storagePath){try{await deleteObject(sRef(storage,d.photo.storagePath));}catch(e){}}};
+  const sv=root.querySelector('#exp-save');if(sv)sv.onclick=()=>saveExpense(lookup,rerender);
+  root.querySelectorAll('[data-expdel]').forEach(b=>b.onclick=()=>deleteExpense(lookup(b.dataset.expjob),b.dataset.expdel,rerender));
+}
+function pickTicketPhoto(jobId,ctx,rerender){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='image/*';inp.setAttribute('capture','environment');
+  inp.onchange=()=>{const f=inp.files&&inp.files[0];if(f)readTicket(f,jobId,ctx,rerender);};
+  inp.click();
+}
+// Foto más ligera: sube antes y la IA la lee igual de bien
+async function shrinkImage(file,max=1600,q=0.82){
+  try{
+    const bmp=await createImageBitmap(file,{imageOrientation:'from-image'});
+    const k=Math.min(1,max/Math.max(bmp.width,bmp.height));
+    const c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);
+    c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+    return await new Promise(r=>c.toBlob(b=>r(b||file),'image/jpeg',q));
+  }catch(e){return file;}
+}
+async function readTicket(file,jobId,ctx,rerender){
+  if(!file.type.startsWith('image/')){toast('Elige una foto','err');return;}
+  const preview=URL.createObjectURL(file);
+  const mine=()=>expDraft&&expDraft.preview===preview;
+  expDraft={jobId,ctx,photo:null,preview,amount:'',type:'otros',note:'',reading:true};rerender();
+  try{
+    const blob=await shrinkImage(file);
+    const path=`trabajos/${auth.currentUser.uid}/gastos/${jobId}_${Date.now()}.jpg`;
+    await new Promise((res,rej)=>{const t=uploadBytesResumable(sRef(storage,path),blob,{contentType:'image/jpeg'});t.on('state_changed',null,rej,res);});
+    const url=await getDownloadURL(sRef(storage,path));
+    if(!mine()){try{await deleteObject(sRef(storage,path));}catch(e){}return;}
+    expDraft.photo={url,storagePath:path};
+    try{
+      const idToken=await auth.currentUser.getIdToken();
+      const r=await fetch('/api/app',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${idToken}`},
+        body:JSON.stringify({accion:'leer_ticket',path})});
+      const b=await r.json();
+      if(!b.ok)throw new Error(b.error||'');
+      if(mine())Object.assign(expDraft,{amount:b.importe??'',type:b.tipo||'otros',merchant:b.comercio||'',date:b.fecha||null,ia:true,
+        msg:b.importe?'Leído por la IA: revisa el importe y guarda':b.es_ticket?'No se lee el total: escríbelo':'No parece un ticket: escribe el importe'});
+    }catch(e){if(mine())expDraft.msg='No he podido leer el ticket: escribe el importe';}
+  }catch(e){
+    toast('Error subiendo la foto','err');
+    if(mine()){expDraft.photo=null;expDraft.msg='La foto no se ha subido: puedes guardarlo sin ticket';}
+  }finally{if(mine()){expDraft.reading=false;rerender();}}
+}
+async function saveExpense(lookup,rerender){
+  syncDraft();const d=expDraft;if(!d)return;
+  const amount=Math.round(Number(String(d.amount).replace(',','.'))*100)/100;
+  if(!(amount>0)){toast('Pon el importe','err');return;}
+  const job=lookup(d.jobId);if(!job)return;
+  const note=(d.note||'').trim().slice(0,80);
+  const e={id:`g${Date.now()}`,type:d.type,amount,merchant:d.merchant||'',note:note===d.merchant?'':note,
+    date:d.date||job.date||null,photo:d.photo||null,ia:!!d.ia,by:auth.currentUser.email,at:Date.now()};
+  const btn=$('exp-save');if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
+  try{
+    await setDoc(doc(db,'trabajos',job.id),{expenses:arrayUnion(e)},{merge:true});
+    job.expenses=[...jobExpenses(job),e];expDraft=null;toast(`🧾 ${fmt(amount)} € apuntados`,'ok');rerender();
+  }catch(err){toast('Error: '+err.message,'err');if(btn){btn.disabled=false;btn.textContent='Guardar gasto';}}
+}
+async function deleteExpense(job,id,rerender){
+  const e=jobExpenses(job).find(x=>x.id===id);if(!e)return;
+  if(!confirm(`¿Borrar el gasto de ${fmt(e.amount)} €?`))return;
+  const rest=jobExpenses(job).filter(x=>x.id!==id);
+  try{
+    await setDoc(doc(db,'trabajos',job.id),{expenses:rest},{merge:true});
+    job.expenses=rest;rerender();
+    if(e.photo&&e.photo.storagePath){try{await deleteObject(sRef(storage,e.photo.storagePath));}catch(x){}}
+  }catch(err){toast('Error: '+err.message,'err');}
 }
 
 function renderDetailView(){
@@ -505,6 +667,7 @@ function renderDetailView(){
   }
 
   const missing=missingInfo(job);
+  const org=jobOrigin(job);
   const hasPhone=!!waPhone(job.phone);
   const waBtns=hasPhone?WA_TEMPLATES.filter(t=>!t.when||t.when(job)).map(t=>
     `<a class="wa-btn" href="${esc(waLink(job.phone,t.text(job)))}" target="_blank" rel="noopener">${t.label}</a>`).join(''):'';
@@ -538,13 +701,20 @@ function renderDetailView(){
         <div class="status-badge" style="margin-left:auto;background:${statusTint(sc)};color:${sc}">${statusLabel(job.status)}</div>
       </div>
       ${(job.services||[]).length?`<div class="mat-tags-row" style="margin-top:10px">${job.services.map(s=>`<span class="mat-tag active">${esc(s)}</span>`).join('')}</div>`:''}
+      ${org&&!originEdit?`<div class="notes-text" style="margin-top:10px;color:var(--muted)">📣 Nos conoció por <strong style="color:var(--text)">${esc(ORIGIN_LABEL[org.code]||org.code)}</strong>${org.auto?' (lo apuntó la web)':` · <button class="link-btn" id="org-change">cambiar</button>`}</div>`:''}
     </div>
+    ${!org||originEdit?`<div class="detail-section" id="org-section">
+      <div class="detail-section-title">📣 ¿Cómo nos conoció?</div>
+      <div class="notes-text" style="color:var(--muted);margin-bottom:8px">Pregúntaselo y toca uno: así sabremos qué canal trae trabajo.</div>
+      ${originChips(job.origin,'data-org')}
+    </div>`:''}
     ${missing.length?`<div class="missing-card">⚠️ Falta por apuntar: <strong>${missing.join(', ')}</strong>. <button class="link-btn" id="btn-fill-missing">Completar</button></div>`:''}
     <div class="detail-section">
       <div class="detail-section-title">💬 WhatsApp</div>
       ${hasPhone?`<div class="wa-row">${waBtns}</div>`
         :`<div class="notes-text" style="color:var(--muted)">Añade el teléfono del cliente para escribirle por WhatsApp desde aquí.</div>`}
     </div>
+    ${job.date||jobExpenses(job).length?`<div class="detail-section" id="exp-section">${expSectionInner(job)}</div>`:''}
     <div class="detail-section">
       <div class="detail-section-title">📅 Fecha y horario</div>
       <div class="detail-row"><span>${n>1?'Días':'Día'}</span><strong>${n>1?`${fmtDateEs(job.date)} → ${fmtDateEs(addDays(job.date,n-1))} (${n} días)`:fmtDateEs(job.date)}</strong></div>
@@ -585,6 +755,14 @@ function renderDetailView(){
   if(!isCompleted&&job.date){
     $('btn-complete-job').onclick=()=>openCloseModal(curJob.date,curJob.id);
   }
+  bindDetailExpenses();
+  cont.querySelectorAll('[data-org]').forEach(b=>b.onclick=async()=>{
+    const code=b.dataset.org;
+    try{await setDoc(doc(db,'trabajos',curJob.id),{origin:code,originBy:auth.currentUser.email},{merge:true});
+      curJob={...curJob,origin:code};originEdit=false;toast(`📣 ${ORIGIN_LABEL[code]}`,'ok');renderDetailView();}
+    catch(e){toast('Error: '+e.message,'err');}
+  });
+  if($('org-change'))$('org-change').onclick=()=>{originEdit=true;renderDetailView();};
   cont.querySelectorAll('[data-stage]').forEach(b=>b.onclick=async()=>{
     try{await setStage(curJob,b.dataset.stage);toast(`✅ ${STAGE_LABEL[b.dataset.stage]}`,'ok');renderDetailView();}
     catch(e){toast('Error: '+e.message,'err');}
@@ -885,7 +1063,7 @@ const WA_TEMPLATES=[
     const n=jobDays(j);
     return `Hola ${firstName(j)}, te escribo de Mudanzas del Sur para confirmar tu ${((j.services||[])[0]||'mudanza').toLowerCase()} el ${fmtDateEs(j.date)}${n>1?` (${n} días)`:''}${j.startTime?` a las ${j.startTime}`:''}.\n\nPara que todo vaya rápido:\n• Ten a mano las llaves y, si hace falta, el permiso para aparcar el camión.\n• Si puedes, deja vacíos los armarios y cajones.\n• Avísanos de cualquier cambio de última hora.\n\n¡Nos vemos!`}},
   {label:'📷 Pedir fotos',when:j=>j.status!=='completado',text:j=>
-    `Hola ${firstName(j)}, para darte un precio cerrado, ¿me mandas por aquí unas fotos o un vídeo rápido de los muebles y de cada habitación? Y dime también el piso y si hay ascensor en origen y destino. ¡Gracias!`},
+    `Hola ${firstName(j)}, para darte un precio cerrado, ¿me mandas por aquí unas fotos o un vídeo rápido de los muebles y de cada habitación? Y dime también el piso y si hay ascensor en origen y destino. ¡Gracias!\n\nPor cierto, ¿cómo nos has conocido? (Google, Instagram, algún conocido…)`},
   {label:'⭐ Pedir reseña',when:j=>j.status==='completado',text:j=>
     `Hola ${firstName(j)}, ¡gracias por confiar en Mudanzas del Sur! Si quedaste contento, nos ayudaría muchísimo una reseña en Google${tarifas.reviewUrl?`: ${tarifas.reviewUrl}`:''}. Solo te lleva un minuto 🙏`},
   {label:'🔁 ¿Viste el presupuesto?',when:j=>jobStage(j)==='presupuestado',text:j=>
@@ -958,6 +1136,7 @@ let closeData = {};
 // reparten entre los trabajos en proporción a su precio.
 function computeClosing(jobs,inp,t=tarifas){
   const r2=x=>Math.round(x*100)/100;
+  const tk=inp.tickets||{},tkv=k=>Number(tk[k]||0);
   const revenue=r2(jobs.reduce((a,j)=>a+Number(j.price||0),0));
   const defDays=Math.max(1,...jobs.map(jobDays));
   let totalVehicles=0,totalExtraKm=0;
@@ -972,18 +1151,26 @@ function computeClosing(jobs,inp,t=tarifas){
     totalVehicles+=rent;totalExtraKm+=extraCost;
     return {type:v.type,plan:v.plan,days,km,rent,included,extraKm,extraCost};
   });
+  // Ticket del alquiler: manda el importe real (ya incluye los km extra)
+  if(tkv('vehiculo')>0){totalVehicles=tkv('vehiculo');totalExtraKm=0;}
   let totalLabor=0;const hours={};
   Object.entries(inp.hours||{}).forEach(([name,h])=>{
     h=Number(h||0);if(!h||PARTNERS.includes(name))return;
     hours[name]=h;totalLabor+=h*Number(t.workerHour||0);
   });
+  // Incentivo: lo que se le da a un trabajador además de sus horas
+  const bonus={};
+  Object.entries(inp.bonus||{}).forEach(([name,v])=>{v=Number(v||0);if(!v||PARTNERS.includes(name))return;bonus[name]=v;totalLabor+=v;});
   let totalMaterials=0;const matQty={};
   Object.entries(inp.matQty||{}).forEach(([m,q])=>{
     q=Number(q||0);if(!q||REUSABLE.includes(m))return;
     matQty[m]=q;totalMaterials+=q*Number(t[m]||0);
   });
+  totalMaterials+=tkv('material');
   const auto=fuelAuto(inp.vehicles,t);
-  const fuel=r2(pickFuel(inp.fuel,auto.cost)),extras=Number(inp.extras||0);
+  // Gasoil: lo escrito a mano; si no, los tickets; si no, el cálculo por km
+  const fuel=r2(pickFuel(inp.fuel,tkv('gasoil')>0?tkv('gasoil'):auto.cost));
+  const extras=r2(Number(inp.extras||0)+tkv('comida')+tkv('peaje')+tkv('alojamiento')+tkv('otros'));
   const totalCost=r2(totalVehicles+totalExtraKm+totalLabor+totalMaterials+fuel+extras);
   const partnerPay={};let totalPartners=0;
   Object.entries(inp.partnerPay||{}).forEach(([name,v])=>{v=Number(v||0);if(!v)return;partnerPay[name]=v;totalPartners+=v;});
@@ -999,7 +1186,7 @@ function computeClosing(jobs,inp,t=tarifas){
     const allocMargin=r2(Number(j.price||0)-costs[i]);
     return {id:j.id,share:shares[i],allocCost:costs[i],allocPartners:parts[i],allocMargin,profit:r2(allocMargin-parts[i])};
   });
-  return {vehicles,hours,matQty,fuel,fuelAuto:auto.cost,fuelLiters:auto.liters,extras,partnerPay,revenue,
+  return {vehicles,hours,bonus,tickets:{...tk},matQty,fuel,fuelAuto:auto.cost,fuelLiters:auto.liters,extras,partnerPay,revenue,
     totalVehicles:r2(totalVehicles),totalExtraKm:r2(totalExtraKm),totalLabor:r2(totalLabor),
     totalMaterials:r2(totalMaterials),totalCost,margin,totalPartners,
     profit:r2(margin-totalPartners),perJob};     // profit = beneficio que queda para el negocio
@@ -1007,8 +1194,9 @@ function computeClosing(jobs,inp,t=tarifas){
 
 // Abre el cierre de un día. Por defecto incluye todos los trabajos pendientes de ese día.
 function openCloseModal(ds,onlyId){
-  const candidates=pendingJobsOn(ds);
-  if(onlyId&&!candidates.some(j=>j.id===onlyId)&&curJob)candidates.unshift(curJob);
+  // Copias: el cierre trabaja sobre ellas. Si la ficha abierta tiene gastos recién apuntados, se usan esos.
+  const candidates=pendingJobsOn(ds).map(j=>curJob&&j.id===curJob.id&&jobExpenses(curJob).length>=jobExpenses(j).length?{...j,expenses:jobExpenses(curJob)}:{...j});
+  if(onlyId&&!candidates.some(j=>j.id===onlyId)&&curJob)candidates.unshift({...curJob});
   const selected=new Set(candidates.map(j=>j.id));
   const sel=candidates.filter(j=>selected.has(j.id));
   // Vehículos: los apuntados en los trabajos, sin repetir (el mismo vehículo sirve para todo el día)
@@ -1017,14 +1205,29 @@ function openCloseModal(ds,onlyId){
   const crews=[...new Set(sel.flatMap(jobCrew))];
   const people=[...new Set([...WORKERS,...crews.filter(c=>!PARTNERS.includes(c))])];
   closeData={ds,candidates,selected,vehicles,crew:crews,people,
-    hours:Object.fromEntries(people.map(p=>[p,''])),
+    hours:Object.fromEntries(people.map(p=>[p,''])),bonus:{},tickets:{},
     matQty:{},fuel:'',extras:'',partnerPay:Object.fromEntries(PARTNERS.map(p=>[p,''])),
     partnerHours:Object.fromEntries(PARTNERS.map(p=>[p,'']))};
+  if(expDraft&&expDraft.ctx==='close')expDraft=null;
   renderCloseModal();
   $('close-overlay').classList.add('open');
   document.body.style.overflow='hidden';
 }
 function closeSelectedJobs(){return closeData.candidates.filter(j=>closeData.selected.has(j.id))}
+function closeExpInner(){
+  const sel=closeSelectedJobs();
+  return `<div class="form-section-title">🧾 Tickets y gastos apuntados</div>
+    ${sel.length>1?'<div class="notes-text" style="color:var(--muted);margin-bottom:4px">Se suman los de todos los trabajos marcados.</div>':''}
+    ${expensesHTML(sel,{editable:true,addTo:sel.length?sel[0].id:null,ctx:'close'})}`;
+}
+function bindCloseExpenses(){
+  const sec=$('close-exp');if(!sec)return;
+  bindExpenses(sec,id=>closeData.candidates.find(j=>j.id===id),'close',rerenderCloseExp);
+}
+function rerenderCloseExp(){
+  const sec=$('close-exp');if(sec){sec.innerHTML=closeExpInner();bindCloseExpenses();}
+  updateCloseCalc();
+}
 
 function renderCloseModal(){
   const c=closeData,sel=closeSelectedJobs();
@@ -1044,8 +1247,10 @@ function renderCloseModal(){
           <span class="close-job-price">${j.price?fmt(j.price)+' €':'<span style="color:var(--danger)">sin precio</span>'}</span>
         </label>`).join('')}
     </div>`:''}
+    <div class="form-section" id="close-exp">${closeExpInner()}</div>
     <div class="form-section">
       <div class="form-section-title">🚛 Vehículos alquilados</div>
+      <div class="notes-text" id="close-veh-note" style="color:var(--muted)"></div>
       ${c.vehicles.length?c.vehicles.map((v,i)=>`
         <div class="veh-close">
           <div class="veh-close-top"><span>${esc(vehicleLabel(v))}</span><button class="photo-remove" style="position:static" data-vdel="${i}">✕</button></div>
@@ -1059,13 +1264,15 @@ function renderCloseModal(){
       </div>
     </div>
     <div class="form-section">
-      <div class="form-section-title">⏱ Horas de cada trabajador (incluido el viaje)</div>
+      <div class="form-section-title">⏱ Trabajadores: horas (incluido el viaje) e incentivo</div>
+      <div class="notes-text" style="color:var(--muted);margin-bottom:4px">Horas × ${fmt(tarifas.workerHour)} €. Si a alguien se le da algo más, ponlo en «+ €».</div>
       <div class="worker-hours-grid">
         ${c.people.map(p=>`
           <div class="worker-row">
             <span class="worker-label">${esc(p)}${c.crew.includes(p)?' ✓':''}</span>
-            <input class="worker-input" type="number" min="0" step="0.5" placeholder="0" data-worker="${esc(p)}" value="${esc(String(c.hours[p]??''))}" />
+            <input class="worker-input" type="number" min="0" step="0.5" placeholder="0" aria-label="Horas de ${esc(p)}" data-worker="${esc(p)}" value="${esc(String(c.hours[p]??''))}" />
             <span style="font-size:.75rem;color:var(--muted)">h</span>
+            <input class="worker-input worker-bonus" type="number" min="0" step="1" placeholder="+ €" aria-label="Incentivo para ${esc(p)} en euros" data-bonus="${esc(p)}" value="${esc(String(c.bonus[p]??''))}" />
           </div>`).join('')}
       </div>
       <div class="add-person-row">
@@ -1073,8 +1280,8 @@ function renderCloseModal(){
         <button class="btn btn-ghost btn-sm" id="close-add-person">Añadir</button>
       </div>
     </div>
-    <div class="form-section">
-      <div class="form-section-title">📦 Material gastado (las mantas, fajas, etc. no cuentan)</div>
+    <details class="form-section close-more"${Object.values(c.matQty).some(v=>Number(v))?' open':''}>
+      <summary class="form-section-title">📦 Material sin ticket (cajas, film…) · las mantas no cuentan</summary>
       <div class="mat-qty-grid">
         ${consumables.map(m=>`
           <div class="mat-qty-row">
@@ -1083,12 +1290,12 @@ function renderCloseModal(){
             <span style="font-size:.75rem;color:var(--muted)">ud</span>
           </div>`).join('')}
       </div>
-    </div>
+    </details>
     <div class="form-section">
-      <div class="form-section-title">⛽ Otros gastos</div>
+      <div class="form-section-title">⛽ Gasoil y otros gastos sin ticket</div>
       <div class="fi"><label>Gasoil (€) · se calcula con los km de los vehículos</label><input type="number" id="chk-fuel" min="0" step="0.5" placeholder="auto" value="${esc(String(c.fuel))}" />
         <div class="fuel-hint" id="chk-fuel-hint"></div></div>
-      <div class="fi"><label>Otros: peajes, parking, comida… (€)</label><input type="number" id="chk-extras" min="0" step="0.5" placeholder="0.00" value="${esc(String(c.extras))}" /></div>
+      <div class="fi"><label>Otros sin ticket: peajes, parking, comida… (€)</label><input type="number" id="chk-extras" min="0" step="0.5" placeholder="0.00" value="${esc(String(c.extras))}" /></div>
     </div>
     <div class="form-section">
       <div class="form-section-title">💼 Socios (${fmt(tarifas.partnerHour)} €/h)</div>
@@ -1106,12 +1313,14 @@ function renderCloseModal(){
     </div>
     <div class="calc-preview" id="close-calc"></div>`;
 
-  body.querySelectorAll('[data-sel]').forEach(cb=>cb.onchange=()=>{cb.checked?c.selected.add(cb.dataset.sel):c.selected.delete(cb.dataset.sel);updateCloseCalc();});
+  body.querySelectorAll('[data-sel]').forEach(cb=>cb.onchange=()=>{cb.checked?c.selected.add(cb.dataset.sel):c.selected.delete(cb.dataset.sel);rerenderCloseExp();});
   body.querySelectorAll('[data-vkm]').forEach(inp=>inp.oninput=()=>{c.vehicles[+inp.dataset.vkm].km=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-vdays]').forEach(inp=>inp.oninput=()=>{c.vehicles[+inp.dataset.vdays].days=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=()=>{c.vehicles.splice(+b.dataset.vdel,1);renderCloseModal();});
   body.querySelectorAll('[data-vadd]').forEach(b=>b.onclick=()=>{const[type,plan]=b.dataset.vadd.split('|');c.vehicles.push({type,plan:+plan,days:defDays,km:''});renderCloseModal();});
   body.querySelectorAll('[data-worker]').forEach(inp=>inp.oninput=()=>{c.hours[inp.dataset.worker]=inp.value;updateCloseCalc();});
+  body.querySelectorAll('[data-bonus]').forEach(inp=>inp.oninput=()=>{c.bonus[inp.dataset.bonus]=inp.value;updateCloseCalc();});
+  bindCloseExpenses();
   body.querySelectorAll('[data-mat]').forEach(inp=>inp.oninput=()=>{c.matQty[inp.dataset.mat]=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-partner]').forEach(inp=>inp.oninput=()=>{c.partnerPay[inp.dataset.partner]=inp.value;updateCloseCalc();});
   // Horas de socio → importe automático (se puede retocar a mano)
@@ -1126,17 +1335,22 @@ function renderCloseModal(){
   $('close-add-person').onclick=()=>{
     const n=$('close-new-person').value.trim();
     if(!n||c.people.includes(n))return;
-    c.people.push(n);c.hours[n]='';renderCloseModal();
+    c.people.push(n);c.hours[n]='';c.bonus[n]='';renderCloseModal();
   };
   updateCloseCalc();
 }
 
 function updateCloseCalc(){
   const sel=closeSelectedJobs();
+  closeData.tickets=ticketTotals(sel);
   const r=computeClosing(sel,closeData);
+  const tk=closeData.tickets;
+  const vn=$('close-veh-note');
+  if(vn)vn.textContent=tk.vehiculo>0?`Hay ticket del alquiler (${fmt(tk.vehiculo)} €): se usa ese importe en vez de la tarifa. Los km sirven para el gasoil.`:'';
   const pClass=r.profit>=0?'profit-pos':'profit-neg';
-  const fh=$('chk-fuel-hint');if(fh)fh.textContent=fuelHint(closeData.vehicles,closeData.fuel);
-  const fi=$('chk-fuel');if(fi)fi.placeholder=r.fuelAuto?String(r.fuelAuto):'auto';
+  const fh=$('chk-fuel-hint');
+  if(fh)fh.textContent=tk.gasoil>0&&closeData.fuel===''?`Se usan los tickets de gasoil: ${fmt(tk.gasoil)} €. Escribe aquí solo si quieres cambiarlo.`:fuelHint(closeData.vehicles,closeData.fuel);
+  const fi=$('chk-fuel');if(fi)fi.placeholder=tk.gasoil>0?String(tk.gasoil):r.fuelAuto?String(r.fuelAuto):'auto';
   const hint=$('close-margin-hint');
   if(hint)hint.textContent=`Pon vuestras horas y se calcula lo que cobra cada uno. Margen después de gastos: ${fmt(r.margin)} €; lo que no os repartáis queda para el negocio.`;
   const line=(l,v)=>`<div class="calc-row" style="color:var(--muted)"><span>${l}</span><span>-${fmt(v)} €</span></div>`;
@@ -1149,7 +1363,7 @@ function updateCloseCalc(){
     ${line(`Personal (${fmt(tarifas.workerHour)} €/h)`,r.totalLabor)}
     ${line('Material gastado',r.totalMaterials)}
     ${line(`Gasoil${r.fuelLiters&&r.fuel===r.fuelAuto?` (${fmt(r.fuelLiters)} L)`:''}`,r.fuel)}
-    ${line('Otros gastos',r.extras)}
+    ${line('Comida, peajes y otros',r.extras)}
     <div class="calc-row total"><span>Total costes</span><span>${fmt(r.totalCost)} €</span></div>
     <div class="calc-row"><span>Margen</span><span>${fmt(r.margin)} €</span></div>
     ${Object.entries(r.partnerPay).map(([n,v])=>line(`Cobra ${esc(n)}`,v)).join('')}
@@ -1172,6 +1386,8 @@ $('close-overlay').onclick=e=>{if(e.target===$('close-overlay'))closeCloseModal(
 $('close-modal-save').addEventListener('click',async()=>{
   const jobs=closeSelectedJobs();
   if(!jobs.length)return;
+  if(expDraft&&expDraft.ctx==='close'){toast('Guarda o cancela el gasto que estás apuntando','err');return;}
+  closeData.tickets=ticketTotals(jobs);
   const r=computeClosing(jobs,closeData);
   const {perJob,profit,...group}=r;
   const groupId=`c${Date.now()}`;
@@ -1405,6 +1621,11 @@ function renderFormTab(){
         <div class="fi"><label>Población</label><input id="f-location" placeholder="Isla Cristina, Huelva…" value="${esc(f.location||'')}" /></div>
       </div>
       <div class="form-section">
+        <div class="form-section-title">¿Cómo nos conoció?</div>
+        ${jobOrigin(f)&&jobOrigin(f).auto?`<div class="notes-text" style="color:var(--muted)">Lo apuntó la web: <strong>${esc(ORIGIN_LABEL[jobOrigin(f).code]||'')}</strong>.</div>`
+          :originChips(f.origin,'data-forg')}
+      </div>
+      <div class="form-section">
         <div class="form-section-title">Servicio</div>
         <div class="mat-grid">
           ${SERVICES.map(sv=>`<button class="mat-tag${(f.services||[]).includes(sv)?' active':''}" data-sv="${esc(sv)}">${esc(sv)}</button>`).join('')}
@@ -1450,6 +1671,8 @@ function renderFormTab(){
       const sv=btn.dataset.sv,cur=formState.services||[];
       formState.services=cur.includes(sv)?cur.filter(x=>x!==sv):[...cur,sv];renderFormTab();});
     scroll.querySelectorAll('.status-opt').forEach(btn=>{btn.onclick=()=>{formState.status=btn.dataset.s;renderFormTab();};});
+    scroll.querySelectorAll('[data-forg]').forEach(btn=>btn.onclick=()=>{
+      collectFormState();formState.origin=formState.origin===btn.dataset.forg?'':btn.dataset.forg;renderFormTab();});
   }
   if(activeTab==='addresses'){
     scroll.innerHTML=`
@@ -1593,8 +1816,9 @@ $('btn-save-job').addEventListener('click',async()=>{
   else if(!formState.stage||formState.stage==='programado')formState.stage='solicitud';
   $('btn-save-job').innerHTML='<span class="spin"></span>';
   $('btn-save-job').disabled=true;
-  const {id,_day,_ofDays,...clean}=formState;
+  const {id,_day,_ofDays,expenses,...clean}=formState;   // los gastos se guardan aparte, en el momento
   const data={...clean,days:jobDays(clean),photos:formPhotos,updatedBy:auth.currentUser.email,updatedAt:serverTimestamp()};
+  if(data.origin&&data.origin!==(curJob&&isEditing?curJob.origin:undefined))data.originBy=auth.currentUser.email;
   // Los campos antiguos se sustituyen por los nuevos cuando se rellenan
   if(data.crew.length)data.team='';
   if(data.vehicles.length)data.vehicle='';

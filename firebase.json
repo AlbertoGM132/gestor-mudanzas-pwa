@@ -28,6 +28,13 @@
       ],
       "rewrites": [
         {
+          "source": "/api/app",
+          "function": {
+            "functionId": "app_api",
+            "region": "europe-west1"
+          }
+        },
+        {
           "source": "/api/solicitud",
           "function": {
             "functionId": "solicitud_publica",
