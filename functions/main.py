@@ -349,5 +349,8 @@ from web_ia import web_api  # noqa: E402,F401
 # ── Panel de seguimiento (analítica de web, redes y MudanzaPro) ──
 from panel import panel_api, informe_semanal  # noqa: E402,F401
 
+# ── API de la app: leer tickets de gastos con IA ──
+from app_ia import app_api  # noqa: E402,F401
+
 # ── Motor de presupuestos: propuesta automática para cada solicitud nueva (modo sombra) ──
 from motor_app import motor_presupuesto  # noqa: E402,F401
