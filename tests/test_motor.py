@@ -256,3 +256,20 @@ def test_porte_pequeno_ofrece_precio_juntandolo():
     e, r = calc(sol(muebles={"lavadora": 1}), [(40, 40), (25, 20), (45, 40)], True)
     alt = next(a for a in r["alternativas"] if a["tipo"] == "aprovechando_salida")
     assert alt["price"] < r["price"] / 1.5
+
+
+# ── Solo se presupuesta lo marcado (10/11) ───────────────────
+
+def test_casa_solo_cuenta_lo_marcado():
+    """Chalet con 11 m³ marcados: se presupuestan 11 m³, no los 42 de un chalet típico."""
+    e = {"tipo": "casa", "casa": "chalet", "items": {"sofa": 2, "cama": 2, "armario4": 1, "mesa": 1, "silla": 6,
+                                                    "frigorifico": 1, "lavadora": 1}}
+    m3 = motor.volumen(e, motor.CONFIG)
+    assert m3 == round(2 * 1.5 + 2 * 1.5 + 2.0 + 0.8 + 6 * 0.2 + 1.0 + 0.5, 1)
+
+
+def test_casa_sin_nada_marcado_usa_el_tamano_solo_como_referencia():
+    e = {"tipo": "casa", "casa": "3", "items": {}}
+    assert motor.volumen(e, motor.CONFIG) == 28
+    p = motor.proponer(sol(casa="3", originAddress="A, Huelva", destinAddress="B, Ayamonte"), T, RutasFalsas())
+    assert p["etiqueta"] == "a_mano" and "price" not in p

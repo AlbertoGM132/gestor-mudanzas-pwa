@@ -37,7 +37,6 @@ CONFIG = {
     "factor_montaje": 1.5,
     "casa_m3": {"estudio": [8, 12], "1": [12, 18], "2": [20, 28], "3": [28, 38], "4": [38, 48], "chalet": [42, 60]},
     "casa_cajas": {"estudio": 20, "1": 35, "2": 50, "3": 60, "4": 75, "chalet": 90},
-    "margen_pequenos": 0.15,              # casa completa sin cajas contadas: cosas pequeñas que no se ven
     "cajas_por_respuesta": {"10": 8, "20": 15, "30": 25, "45": 38, "60": 53, "80": 70, "mas": 90},
     "parte_fragil": 0.4,                  # parte de las cajas que es cristalería o frágil
     "min_caja_fragil": 7.5, "min_caja_normal": 3.0,   # minutos de UNA persona por caja
@@ -280,15 +279,14 @@ def _cajas(e, c):
 
 
 def volumen(e, c):
+    """m³ de lo que el cliente ha marcado, y nada más: lo que no se marca ni se presupuesta ni se mueve.
+    Solo si no ha marcado nada (va «a mano») se usa el tamaño de la casa, como referencia para Alberto."""
     s = sum(c["vol"].get(k, c["vol"]["otro"]) * n for k, n in e.get("items", {}).items() if k != "caja")
     cajas_txt = e.get("items", {}).get("caja") or c["cajas_por_respuesta"].get(e.get("cajas_respuesta"))
     if cajas_txt:
         s += c["vol"]["caja"] * cajas_txt
-    if e["tipo"] == "casa":
-        if not cajas_txt:
-            s *= 1 + c["margen_pequenos"]
-        lo = c["casa_m3"].get(e.get("casa") or "", [0])[0]
-        s = max(s, lo)
+    if e["tipo"] == "casa" and not e.get("items") and not cajas_txt:
+        s = c["casa_m3"].get(e.get("casa") or "", [0])[0]
     return round(max(s, 0.5), 1)
 
 
@@ -470,8 +468,8 @@ def revisar(e, legs, r, c):
         lo, hi = c["casa_m3"][e["casa"]]
         bruto = sum(c["vol"].get(k, 0.4) * n for k, n in e["items"].items())
         if bruto < lo * 0.6:
-            revisar_.append(f"Los muebles marcados suman {bruto:.0f} m³; para esa casa cuento al menos {lo} m³ "
-                            "(lo que no se marca: cajas, lámparas, cocina…)")
+            revisar_.append(f"Solo se presupuesta lo marcado: {bruto:.0f} m³. Una casa así suele tener {lo}–{hi} m³; "
+                            "confirma con el cliente que no le falta nada por marcar")
         elif bruto > hi * 1.4:
             revisar_.append(f"Los muebles marcados suman {bruto:.0f} m³: mucho para una casa de ese tamaño")
     if a_mano:

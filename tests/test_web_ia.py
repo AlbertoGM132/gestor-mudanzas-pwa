@@ -250,9 +250,11 @@ def test_calculadora_y_app_dan_lo_mismo():
                                   {"categoria": "sofa", "nombre": "sofá", "cantidad": 1},
                                   {"categoria": "televisor", "nombre": "tele", "cantidad": 1}])
     e, mp = r["estudio"], repo.creados[0]["motorProposal"]
-    assert e["m3"] == 12 and e["personas"] == 3 == mp["detalle"]["personas"]   # antes salían 4
+    # Solo cuenta lo marcado (cama 1,5 + sofá 1,5 + tele 0,3), no el tamaño de la casa
+    assert e["m3"] == 3.3 and e["personas"] == 2 == mp["detalle"]["personas"]
     assert e["min"] <= mp["price"] <= e["max"]
-    assert "3 personas" in repo.creados[0]["notes"]
+    assert "2 personas" in repo.creados[0]["notes"]
+    assert any(m.startswith("Solo se presupuesta lo marcado") for m in mp["motivos"])
     # Al cliente, solo los km entre casas (4); el día completo (36) queda para la app
     assert e["km"] == 4 and "4 km entre casas (36 km el día completo)" in repo.creados[0]["notes"]
 
