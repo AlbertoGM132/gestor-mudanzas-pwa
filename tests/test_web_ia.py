@@ -229,10 +229,11 @@ def test_formulario_guarda_claves_para_el_motor():
     k = repo.creados[0]["formKeys"]
     assert k == {"casa": "2", "muebles": {"sofas": 2, "armario4": 1}, "desmontaje": "si", "embalaje": "todo",
                  "cajas": "60", "especiales": ["piano"], "origin_piso": "2", "destin_piso": "bajo",
-                 "comentario": True, "entrega": None}
+                 "comentario": "ojo con la vitrina", "entrega": None}      # el texto, para que lo lea la IA
     import motor
     e, _ = motor.entrada_desde_solicitud(repo.creados[0])
     assert e["tipo"] == "casa" and e["items"] == {"sofa": 2, "armario4": 1} and e["origen"]["piso"] == 2
+    assert e["comentario"] is True
     assert e["origen"]["ascensor"] is False and e["comentario"] is True
 
 

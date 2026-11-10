@@ -12,6 +12,7 @@ recálculo los reutiliza, así el precio no cambia si nadie cambia los datos.
 import os
 from datetime import datetime, timezone
 
+import lectura_ia
 import motor
 from mcp_escritura import DEFAULT_TARIFAS
 
@@ -50,11 +51,25 @@ class FirebaseMotorRepo:
         self._db.collection("trabajos").document(doc_id).set({"motorProposal": prop}, merge=True)
 
 
-def procesar(doc_id, antes, despues, repo, rutas, ahora=None):
+def lectura_para(job, leer):
+    """Lo escrito a mano, leído por la IA. Si el texto no ha cambiado se reutiliza la lectura guardada."""
+    texto = lectura_ia.texto_de_solicitud(job)
+    if not texto:
+        return None
+    previa = (job.get("motorProposal") or {}).get("lectura") if isinstance(job.get("motorProposal"), dict) else None
+    if previa and previa.get("ok") and previa.get("huella") == lectura_ia.huella(texto):
+        return previa
+    if not leer:
+        return None
+    return leer(texto, motor.entrada_desde_solicitud(job)[0]["items"])
+
+
+def procesar(doc_id, antes, despues, repo, rutas, ahora=None, leer=None):
     if not debe_calcular(antes, despues):
         return None
     recalcular = antes is not None
     job = dict(despues)
+    lectura = lectura_para(job, leer)               # antes de quitar la propuesta vieja (guarda la lectura)
     if recalcular:                                  # al recalcular a mano, las rutas se vuelven a pedir
         job.pop("motorProposal", None)
     otro = False
@@ -62,7 +77,7 @@ def procesar(doc_id, antes, despues, repo, rutas, ahora=None):
         otro = repo.hay_trabajo_con_vehiculo(despues.get("desiredDate"), doc_id)
     except Exception as e:  # noqa: BLE001
         print("motor otro trabajo:", repr(e))
-    prop = motor.proponer(job, repo.tarifas(), rutas, otro_trabajo_ese_dia=otro, ahora=ahora)
+    prop = motor.proponer(job, repo.tarifas(), rutas, otro_trabajo_ese_dia=otro, ahora=ahora, lectura=lectura)
     repo.guardar(doc_id, prop)
     return prop
 
@@ -71,7 +86,8 @@ try:
     from firebase_functions import firestore_fn, options
 
     @firestore_fn.on_document_written(document="trabajos/{doc_id}", region="europe-west1",
-                                      memory=options.MemoryOption.MB_512, timeout_sec=120, max_instances=3)
+                                      memory=options.MemoryOption.MB_512, timeout_sec=120, max_instances=3,
+                                      secrets=["GEMINI_KEY"])
     def motor_presupuesto(event: firestore_fn.Event[firestore_fn.Change]) -> None:
         cambio = event.data
         antes = cambio.before.to_dict() if cambio.before and cambio.before.exists else None
@@ -80,7 +96,10 @@ try:
             return
         rutas = motor.Rutas(os.environ.get("GOOGLE_MAPS_KEY", "").strip())
         try:
-            procesar(event.params["doc_id"], antes, despues, FirebaseMotorRepo(), rutas, datetime.now(timezone.utc))
+            clave = os.environ.get("GEMINI_KEY", "").strip()
+            leer = (lambda texto, items: lectura_ia.leer(texto, items, clave)) if clave else None
+            procesar(event.params["doc_id"], antes, despues, FirebaseMotorRepo(), rutas, datetime.now(timezone.utc),
+                     leer=leer)
         except Exception as e:  # noqa: BLE001
             print("motor_presupuesto error:", repr(e))
 except ImportError:  # pruebas locales sin firebase_functions
