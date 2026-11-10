@@ -30,7 +30,9 @@ CONFIG = {
             "bici": 0.5, "caja": 0.1, "otro": 0.4,
             # lo que distingue la calculadora de la web (la IA de las fotos)
             "sofa_pequeno": 1.0, "mesita": 0.2, "estanteria": 0.6, "secadora": 0.5, "lavavajillas": 0.5,
-            "horno_microondas": 0.15, "maleta": 0.15, "planta": 0.3},
+            "horno_microondas": 0.15, "maleta": 0.15, "planta": 0.3,
+            # lo que la IA lee de lo que el cliente escribe a mano (lectura_ia)
+            "cajonera": 0.4, "mesa_jardin": 0.6, "silla_jardin": 0.15, "cuna": 0.6, "barbacoa": 0.5},
     # minutos de desmontaje por pareja; el montaje lleva 1,5 veces más
     "desmontaje_min": {"canape": 15, "armario2": 20, "armario4": 35, "armario6": 45, "cama": 15,
                        "cama_individual": 10, "mesa": 10, "escritorio": 10, "chaise": 10},
@@ -52,7 +54,6 @@ CONFIG = {
     "jornada": 12, "jornada_fuera": 14.5, "conduccion_max_dia": 9, "jornada_casa_grande": 9,
     "jornada_trabajo_mas_uno": 10, "max_personas": 6,
     "ratio_viaje_largo": 1.2,
-    "personas_chalet": 6,                 # chalet o casa grande: una persona más (banco de pruebas)
     "margen_duda": 5,                     # puntos de margen de más cuando el motor ha tenido que suponer datos
     "m3_porte_pequeno": 3,                # hasta aquí se ofrece el precio juntándolo con otro trabajo             # conducción ≥ 1,2 × trabajo: el equipo lo marca el trabajo
     "hotel_habitacion": 80, "personas_habitacion": 3, "comida_persona": 35,
@@ -308,12 +309,8 @@ def vehiculos(e, m3, cd_km, c, forzar_furgoneta=False):
 
 
 def personas_por_volumen(e, m3, c=CONFIG):
-    p = 2 if m3 < 6 else 3 if m3 <= 15 else 4 if m3 <= 25 else 5
-    if e["tipo"] == "casa" and e.get("casa") in ("3", "4", "chalet"):
-        p = max(p, 5)
-    if e["tipo"] == "casa" and e.get("casa") == "chalet":
-        p = max(p, c["personas_chalet"])
-    return p
+    """El equipo sale de lo que hay que mover (lo marcado y lo descrito), no del tamaño de la casa."""
+    return 2 if m3 < 6 else 3 if m3 <= 15 else 4 if m3 <= 25 else 5
 
 
 def personas_viaje_largo(m3, c):
@@ -460,10 +457,16 @@ def revisar(e, legs, r, c):
         supuestos.append("No dice cuántas cajas: cuento las típicas de su casa")
     if esp - ESPECIALES_A_MANO:
         revisar_.append("Ojo: " + ", ".join(sorted(esp - ESPECIALES_A_MANO)))
-    if e.get("otros"):
+    lec = e.get("lectura")
+    if lec and lec.get("lineas"):
+        extra = sum(c["vol"].get(k, c["vol"]["otro"]) * n for k, n in (lec.get("items") or {}).items())
+        revisar_.append(f"Sumado de lo que escribió el cliente (+{extra:.1f} m³): " + "; ".join(lec["lineas"])[:300])
+    for d in (lec or {}).get("dudas") or []:
+        revisar_.append("Duda al leer el comentario: " + d)
+    if e.get("otros") and not lec:
         revisar_.append("Hay muebles descritos a mano: «" + e["otros"][:80] + "»")
     if e.get("comentario"):
-        revisar_.append("El cliente dejó un comentario")
+        revisar_.append("El cliente dejó un comentario" + (": léelo por si dice algo del acceso o de la fecha" if lec else ""))
     if e["tipo"] == "casa" and e["items"] and e.get("casa") and r:
         lo, hi = c["casa_m3"][e["casa"]]
         bruto = sum(c["vol"].get(k, 0.4) * n for k, n in e["items"].items())
@@ -506,18 +509,30 @@ def texto_supuestos(r, provincia):
 
 # ── 5. Todo junto: lo que se guarda en la solicitud ──────────────────
 
-def proponer(job, tarifas=None, rutas=None, otro_trabajo_ese_dia=False, ahora=None):
-    """Calcula la propuesta del motor para una solicitud. Nunca lanza: si algo falla, etiqueta «a_mano»."""
+def proponer(job, tarifas=None, rutas=None, otro_trabajo_ese_dia=False, ahora=None, lectura=None):
+    """Calcula la propuesta del motor para una solicitud. Nunca lanza: si algo falla, etiqueta «a_mano».
+    `lectura`: lo que la IA ha leído del texto libre del cliente (lectura_ia.leer)."""
     e, _ = entrada_desde_solicitud(job)
     guardadas = (job.get("motorProposal") or {}).get("rutas") if isinstance(job.get("motorProposal"), dict) else None
     legs, coords, avisos = preparar_rutas(e, rutas, guardadas)
-    return proponer_entrada(e, legs, coords, avisos, tarifas, otro_trabajo_ese_dia, ahora)
+    return proponer_entrada(e, legs, coords, avisos, tarifas, otro_trabajo_ese_dia, ahora, lectura)
 
 
-def proponer_entrada(e, legs, coords, avisos=None, tarifas=None, otro_trabajo_ese_dia=False, ahora=None):
+def con_lectura(e, lectura):
+    """Suma a lo marcado lo que el cliente describe a mano (leído por la IA)."""
+    if not lectura or not lectura.get("ok"):
+        return e
+    items = dict(e.get("items") or {})
+    for k, n in (lectura.get("items") or {}).items():
+        items[k] = items.get(k, 0) + int(n)
+    return {**e, "items": items, "lectura": {k: lectura.get(k) for k in ("items", "lineas", "dudas")}}
+
+
+def proponer_entrada(e, legs, coords, avisos=None, tarifas=None, otro_trabajo_ese_dia=False, ahora=None, lectura=None):
     """Lo mismo que `proponer`, a partir de la entrada y la ruta ya hechas (la usa la calculadora de la web)."""
     c = cfg(tarifas)
     avisos = list(avisos or [])
+    e = con_lectura(e, lectura)
     provincia = en_provincia(coords)
     r = None
     if legs:
@@ -537,6 +552,8 @@ def proponer_entrada(e, legs, coords, avisos=None, tarifas=None, otro_trabajo_es
             "etiqueta": etiqueta, "motivos": motivos, "entrada": e,
             "rutas": {"legs": [{"km": km, "min": mn} for km, mn in legs], "coords": coords} if legs else None,
             "fotosSinRevisar": e["fotos"]}
+    if lectura:                                    # se guarda con su huella: un recálculo la reutiliza
+        prop["lectura"] = {k: lectura.get(k) for k in ("ok", "huella", "items", "lineas", "dudas")}
     if r and etiqueta != "a_mano":
         prop.update({"price": r["price"], "estimate": r["estimate"], "result": r["result"],
                      "notes": "\n".join(texto_supuestos(r, provincia)),

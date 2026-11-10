@@ -345,7 +345,8 @@ def _parking(m):
     return "puerta" if m < 10 else ("30" if m < 30 else ("100" if m <= 100 else "mas"))
 
 
-def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
+def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None, leer=None):
+    """`leer(texto, items)`: lectura con IA del comentario (lectura_ia.leer). Sin ella, el comentario no suma."""
     body = body if isinstance(body, dict) else {}
     # Bots: igual que el formulario (campo trampa con envío rápido / envío instantáneo).
     # Ojo: el autorrelleno de Chrome rellena el campo trampa a clientes de verdad; esos se guardan con aviso.
@@ -377,7 +378,10 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None):
     tarifas = {**DEFAULT_TARIFAS, **(tarifas or {})}
     coords = {"origen": list(o_xy), "destino": list(d_xy)}
     avisos = [] if fuente_km == "carretera" else ["Km aproximados (sin ruta por carretera)"]
-    prop = motor.proponer_entrada(entrada, legs, coords, avisos, tarifas, ahora=ahora)
+    # Lo que escribe a mano también se presupuesta (lo lee la IA con volúmenes fijos por objeto)
+    comentario = fw._txt(body.get("comentario"), 1500)
+    lectura = leer(comentario, entrada["items"]) if (leer and comentario) else None
+    prop = motor.proponer_entrada(entrada, legs, coords, avisos, tarifas, ahora=ahora, lectura=lectura)
     c = cliente_desde_motor(prop, datos, legs)
 
     # Lo mismo que el formulario de presupuesto, para que la app lo entienda igual
@@ -580,7 +584,9 @@ def handle(req, repo_factory=None, clave=None):
         if accion == "fotos":
             return resp(fotos(body, clave))
         if accion == "estimar":
-            return resp(estimar(body, ip, repo, repo.tarifas()))
+            import lectura_ia
+            leer = lambda texto, items: lectura_ia.leer(texto, items, clave)  # noqa: E731
+            return resp(estimar(body, ip, repo, repo.tarifas(), leer=leer))
         return resp(contacto(body, ip, repo))
     except WebError as e:
         return resp({"ok": False, "error": e.mensaje}, e.status)

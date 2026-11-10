@@ -204,7 +204,7 @@ def claves_formulario(body, raw_inv, comentario):
             "cajas": elegido("cajas", CAJAS),
             "especiales": [x for x in (raw_inv.get("especiales") or []) if x in ESPECIALES],
             "origin_piso": lado(body.get("origen")), "destin_piso": lado(body.get("destino")),
-            "comentario": bool(comentario), "entrega": body.get("entrega") if body.get("entrega") in ENTREGA else None}
+            "comentario": comentario or False, "entrega": body.get("entrega") if body.get("entrega") in ENTREGA else None}
 
 
 def huella_ip(ip, dia):

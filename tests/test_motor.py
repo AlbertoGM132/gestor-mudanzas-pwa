@@ -233,9 +233,11 @@ def test_lo_que_se_guarda_cabe_en_firestore():
 
 # ── Ajustes del banco de pruebas (30/10) ─────────────────────
 
-def test_chalet_lleva_seis_personas():
+def test_el_equipo_sale_de_lo_marcado_no_del_tamano_de_casa():
+    """10/11: Alberto quita el mínimo de 6 personas por chalet; manda el volumen que hay que mover."""
     e, r = calc(sol(casa="chalet", muebles={"sofas": 3, "camas": 4, "armario4": 2}), [(30, 30), (20, 20), (30, 30)], True)
-    assert r["personas"] == 6
+    e2, r2 = calc(sol(casa="2", muebles={"sofas": 3, "camas": 4, "armario4": 2}), [(30, 30), (20, 20), (30, 30)], True)
+    assert r["personas"] == r2["personas"] < 6
 
 
 def test_solo_tamano_de_casa_va_a_mano():
@@ -273,3 +275,65 @@ def test_casa_sin_nada_marcado_usa_el_tamano_solo_como_referencia():
     assert motor.volumen(e, motor.CONFIG) == 28
     p = motor.proponer(sol(casa="3", originAddress="A, Huelva", destinAddress="B, Ayamonte"), T, RutasFalsas())
     assert p["etiqueta"] == "a_mano" and "price" not in p
+
+
+# ── Lo que el cliente escribe a mano también se presupuesta (10/11) ─────
+
+import lectura_ia  # noqa: E402
+import motor_app  # noqa: E402
+
+
+def _gem_falso(respuesta, llamadas=None):
+    def gem(modelos, contents, clave, **kw):
+        if llamadas is not None:
+            llamadas.append(contents[0]["parts"][0]["text"])
+        return respuesta
+    return gem
+
+
+def test_lectura_suma_lo_descrito_con_volumen_fijo():
+    resp = ('{"objetos": [{"clave": "comoda", "cantidad": 2, "texto": "un par de cómodas"},'
+            '{"clave": "cajonera", "cantidad": 3, "texto": "algunas cajoneras"},'
+            '{"clave": "mesa_jardin", "cantidad": 1}, {"clave": "silla_jardin", "cantidad": 4},'
+            '{"clave": "inventada", "cantidad": 2}], "dudas": ["¿la lavadora es la misma que la marcada?"]}')
+    llamadas = []
+    lec = lectura_ia.leer("un par de cómodas, algunas cajoneras…", {"sofa": 1}, "k", gem=_gem_falso(resp, llamadas),
+                          modelos=["m"])
+    assert lec["ok"] and lec["items"] == {"comoda": 2, "cajonera": 3, "mesa_jardin": 1, "silla_jardin": 4, "otro": 2}
+    assert "sofá" in llamadas[0]                                   # la IA sabe lo que ya está marcado
+    e = {"tipo": "casa", "casa": "chalet", "items": {"sofa": 1}}
+    e2 = motor.con_lectura(e, lec)
+    assert motor.volumen(e2, motor.CONFIG) == round(1.5 + 2 * 0.5 + 3 * 0.4 + 0.6 + 4 * 0.15 + 2 * 0.4, 1)
+
+
+def test_lectura_rota_no_suma_y_avisa():
+    lec = lectura_ia.leer("cosas", {}, "k", gem=_gem_falso("no es json"), modelos=["m"])
+    assert lec["ok"] is False and lec["items"] == {}
+    e = {"tipo": "porte", "items": {"sofa": 1}}
+    assert motor.con_lectura(e, lec) == e
+
+
+def test_texto_de_solicitud_antigua_sale_de_las_notas():
+    job = {"formKeys": {"comentario": True}, "inventory": {"otros": "20 Caja"},
+           "notes": "🏠 Casa: Chalet\n🛋 Muebles: 1 sofá\nfuera hay un par de cómodas y plantas\n📅 Fecha: 14/11\n"
+                    "🌐 Llegó por la calculadora de la web"}
+    assert lectura_ia.texto_de_solicitud(job) == "fuera hay un par de cómodas y plantas\nOtros muebles: 20 Caja"
+
+
+def test_recalculo_reutiliza_la_lectura_si_el_texto_no_cambia():
+    job = {"formKeys": {"comentario": "un par de cómodas"}, "inventory": {}}
+    texto = lectura_ia.texto_de_solicitud(job)
+    guardada = {"ok": True, "huella": lectura_ia.huella(texto), "items": {"comoda": 2}, "lineas": [], "dudas": []}
+    llamadas = []
+    leer = lambda t, i: llamadas.append(t) or {"ok": True, "items": {}}  # noqa: E731
+    assert motor_app.lectura_para({**job, "motorProposal": {"lectura": guardada}}, leer) == guardada and not llamadas
+    motor_app.lectura_para({**job, "formKeys": {"comentario": "tres cómodas"}, "motorProposal": {"lectura": guardada}}, leer)
+    assert llamadas == ["tres cómodas"]
+
+
+def test_propuesta_guarda_lo_leido_y_lo_explica():
+    lec = {"ok": True, "huella": "x", "items": {"comoda": 2}, "lineas": ["2 × cómoda («un par de cómodas»)"], "dudas": []}
+    p = motor.proponer(sol(muebles={"sofas": 1}, originAddress="A, Huelva", destinAddress="B, Ayamonte"), T,
+                       RutasFalsas(), lectura=lec)
+    assert p["lectura"]["items"] == {"comoda": 2}
+    assert any(m.startswith("Sumado de lo que escribió el cliente (+1.0 m³)") for m in p["motivos"])
