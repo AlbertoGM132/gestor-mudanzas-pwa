@@ -10,7 +10,7 @@ Distancias: con la variable GOOGLE_MAPS_KEY usa Google (Geocoding + Routes); sin
 recálculo los reutiliza, así el precio no cambia si nadie cambia los datos.
 """
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import lectura_ia
 import motor
@@ -39,16 +39,44 @@ class FirebaseMotorRepo:
         return {**DEFAULT_TARIFAS, **(snap.to_dict() or {})} if snap.exists else dict(DEFAULT_TARIFAS)
 
     def hay_trabajo_con_vehiculo(self, fecha, excepto):
+        """«trabajo» si ese día ya sale un vehículo; «alquiler» si hay uno alquilado de más y libre; si no, False."""
         if not fecha:
             return False
-        for d in self._db.collection("trabajos").where("date", "==", fecha).limit(10).stream():
-            j = d.to_dict() or {}
-            if d.id != excepto and (j.get("vehicles") or j.get("vehicle")):
-                return True
-        return False
+        desde = (datetime.fromisoformat(fecha) - timedelta(days=6)).date().isoformat()
+        trabajos = [(d.id, d.to_dict() or {}) for d in
+                    self._db.collection("trabajos").where("date", ">=", desde).where("date", "<=", fecha).limit(60).stream()]
+        return vehiculo_ese_dia(trabajos, fecha, excepto)
 
     def guardar(self, doc_id, prop):
         self._db.collection("trabajos").document(doc_id).set({"motorProposal": prop}, merge=True)
+
+
+def dias_alquiler(j):
+    """Días de alquiler de un trabajo: los de su presupuesto si son más que los de trabajo."""
+    try:
+        trabajo = max(1, int(j.get("days") or 1))
+    except (TypeError, ValueError):
+        trabajo = 1
+    vs = ((j.get("estimate") or {}).get("vehicles") or []) if isinstance(j.get("estimate"), dict) else []
+    alq = [int(v.get("days") or 0) for v in vs if isinstance(v, dict) and str(v.get("days") or "").isdigit()]
+    return trabajo, max([trabajo] + alq)
+
+
+def vehiculo_ese_dia(trabajos, fecha, excepto=None):
+    hay_alquiler = False
+    for jid, j in trabajos:
+        if jid == excepto or not j.get("date") or j.get("status") == "cancelado":
+            continue
+        if not (j.get("vehicles") or j.get("vehicle") or (j.get("estimate") or {}).get("vehicles")):
+            continue
+        n, alq = dias_alquiler(j)
+        d0 = datetime.fromisoformat(j["date"]).date()
+        idx = (datetime.fromisoformat(fecha).date() - d0).days
+        if 0 <= idx < n:
+            return "trabajo"
+        if n <= idx < alq:
+            hay_alquiler = True
+    return "alquiler" if hay_alquiler else False
 
 
 def lectura_para(job, leer):

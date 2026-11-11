@@ -58,6 +58,7 @@ CONFIG = {
     "m3_porte_pequeno": 3,                # hasta aquí se ofrece el precio juntándolo con otro trabajo             # conducción ≥ 1,2 × trabajo: el equipo lo marca el trabajo
     "hotel_habitacion": 80, "personas_habitacion": 3, "comida_persona": 35,
     "km_max": 700, "horas_minimas": 2,
+    "dia_extra_max_eur": 5,               # si un día más de alquiler cuesta esto o menos, se coge: queda libre para otro trabajo
 }
 
 # Contadores del formulario → objeto del motor
@@ -317,9 +318,24 @@ def personas_viaje_largo(m3, c):
     return 2 if m3 <= c["capacidad"]["crafter"] else 3 if m3 <= 25 else 4
 
 
+def _coste_alquiler(t, kind, km, plan, dias):
+    return float(t[f"rent_{kind}_{plan}"]) * dias + max(0, km - plan * dias) * float(t["extraKm"])
+
+
 def _plan_barato(t, kind, km, dias):
-    coste = lambda plan: float(t[f"rent_{kind}_{plan}"]) * dias + max(0, km - plan * dias) * float(t["extraKm"])
-    return min((200, 400), key=coste)
+    return min((200, 400), key=lambda plan: _coste_alquiler(t, kind, km, plan, dias))
+
+
+def _alquiler(t, kind, km, dias, max_extra):
+    """Plan y días de alquiler. Mínimo los días del trabajo. Si un día más cuesta casi lo mismo (sus km
+    incluidos tapan los km de más), se coge: ese día el vehículo queda libre para otro trabajo."""
+    plan = _plan_barato(t, kind, km, dias)
+    base = _coste_alquiler(t, kind, km, plan, dias)
+    plan2 = _plan_barato(t, kind, km, dias + 1)
+    extra = _coste_alquiler(t, kind, km, plan2, dias + 1) - base
+    if max(0, km - plan * dias) > 0 and extra <= max_extra:
+        return plan2, dias + 1, round(max(0.0, extra), 2)
+    return plan, dias, 0.0
 
 
 def _horas(e, m3, p, legs, vehs, c):
@@ -356,9 +372,11 @@ def _dias(e, h_trab, h_cond, provincia, c):
     return 2
 
 
-def _coste(t, vehs, km, dias, horas, personas, socios, extras):
-    vlist = [{"type": tp, "plan": _plan_barato(t, "furgoneta" if tp == "crafter" else "camion", km, dias),
-              "days": dias, "km": round(km, 1)} for tp, _ in vehs]
+def _coste(t, vehs, km, dias, horas, personas, socios, extras, max_extra=0):
+    vlist = []
+    for tp, _ in vehs:
+        plan, d, _x = _alquiler(t, "furgoneta" if tp == "crafter" else "camion", km, dias, max_extra)
+        vlist.append({"type": tp, "plan": plan, "days": d, "km": round(km, 1)})
     est = {"vehicles": vlist, "hours": horas, "workers": personas - socios, "partners": socios,
            "matQty": {}, "fuel": None, "extras": round(extras, 2)}
     return est, calcular(est, t)
@@ -393,11 +411,12 @@ def calcular_presupuesto(e, legs, tarifas=None, provincia=False, otro_trabajo_es
     socios = min(2, p)
     noche_eur = noches * (c["hotel_habitacion"] * math.ceil(p / c["personas_habitacion"]) + c["comida_persona"] * p)
     material = cajas * c["material_por_caja"]
-    est, res = _coste(t, vehs, km, dias, horas, p, socios, material + noche_eur)
+    mx = c["dia_extra_max_eur"]
+    est, res = _coste(t, vehs, km, dias, horas, p, socios, material + noche_eur, mx)
 
     alternativas = []
     if socios == 2:
-        _, r1 = _coste(t, vehs, km, dias, horas, p, 1, material + noche_eur)
+        _, r1 = _coste(t, vehs, km, dias, horas, p, 1, material + noche_eur, mx)
         alternativas.append({"tipo": "un_socio", "texto": "Con un solo socio (un trabajador en su lugar)",
                              "price": r1["price"]})
     if not _forzar_furgoneta and vehs == [("iveco", 1)] and m3 <= c["capacidad"]["crafter"] and e["tipo"] == "porte":
@@ -415,9 +434,13 @@ def calcular_presupuesto(e, legs, tarifas=None, provincia=False, otro_trabajo_es
         est_j = {**est, "vehicles": [{**v, "plan": 400, "days": 1, "km": km_junto} for v in est["vehicles"][:1]],
                  "hours": h_junto, "extras": round(material + km_junto * float(t["extraKm"]), 2)}
         alternativas.append({"tipo": "aprovechando_salida", "price": calcular(est_j, sin_alquiler)["price"],
-                             "texto": "Juntándolo con otro trabajo ese día" + (" (ese día ya hay uno)" if otro_trabajo_ese_dia else "")})
+                             "texto": "Juntándolo con otro trabajo ese día" + (
+                                 " (ese día ya tienes un vehículo alquilado libre)" if otro_trabajo_ese_dia == "alquiler"
+                                 else " (ese día ya hay uno)" if otro_trabajo_ese_dia else "")})
 
+    dias_alquiler = max([v["days"] for v in est["vehicles"]] or [dias])
     return {"m3": m3, "vehiculos": vehs, "personas": p, "socios": socios, "dias": dias, "noches": noches,
+            "dias_alquiler": dias_alquiler,
             "horas": est["hours"], "horas_trabajo": round(h_trab, 2), "horas_conduccion": round(h_cond, 2),
             "km": round(km), "cajas": cajas, "minutos": {k: round(v) for k, v in mins.items()},
             "noche_eur": round(noche_eur, 2), "material_eur": round(material, 2), "casa_grande": casa_grande,
@@ -502,6 +525,9 @@ def texto_supuestos(r, provincia):
         lineas.append("Casa grande con embalaje: día 1 embalar y desmontar, día 2 llevar y montar")
     if r["noches"]:
         lineas.append(f"Noche fuera: {r['noche_eur']:.0f} € (hotel y comida)")
+    if r.get("dias_alquiler", r["dias"]) > r["dias"]:
+        lineas.append(f"Alquiler: {r['dias_alquiler']} días en vez de {r['dias']}: sale casi igual (los km del día de más "
+                      f"tapan los km extra) y el día {r['dias_alquiler']} tienes el vehículo libre para otro trabajo")
     if r["cajas"]:
         lineas.append(f"Embalaje: {r['cajas']} cajas · material {r['material_eur']:.0f} €")
     return lineas
@@ -559,7 +585,7 @@ def proponer_entrada(e, legs, coords, avisos=None, tarifas=None, otro_trabajo_es
                      "notes": "\n".join(texto_supuestos(r, provincia)),
                      "alternativas": r["alternativas"],
                      "detalle": {k: r[k] for k in ("m3", "personas", "socios", "dias", "horas", "horas_trabajo",
-                                                    "horas_conduccion", "km", "cajas", "minutos", "noche_eur")},
+                                                    "horas_conduccion", "km", "cajas", "minutos", "noche_eur", "dias_alquiler")},
                      "vehiculo": _veh_txt(r["vehiculos"])})
     elif r:
         prop["referencia"] = {"price": r["price"], "notes": "\n".join(texto_supuestos(r, provincia)),

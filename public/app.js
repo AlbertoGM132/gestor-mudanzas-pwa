@@ -95,6 +95,9 @@ function jobCrew(job){return Array.isArray(job.crew)?job.crew:[]}
 function crewLabel(job){const c=jobCrew(job);return c.length?c.join(', '):(job.team||'')}
 // Vehículos: lista [{type,plan}]; los antiguos solo tienen "vehicle" (texto)
 function jobVehicles(job){return Array.isArray(job.vehicles)?job.vehicles:[]}
+// Días de alquiler: los del presupuesto si son más que los de trabajo (el día de más queda libre para otro trabajo)
+function rentalDays(job){const n=jobDays(job);const vs=(job.estimate&&Array.isArray(job.estimate.vehicles))?job.estimate.vehicles:[];
+  return Math.min(31,Math.max(n,...vs.map(v=>parseInt(v.days)||0)))}
 function vehicleLabel(v){const t=VEHICLE_TYPES.find(x=>x.id===v.type);return `${t?t.label:v.type} · ${v.plan} km/día`}
 function vehiclesLabel(job){const v=jobVehicles(job);return v.length?v.map(vehicleLabel).join(' + '):(job.vehicle||'')}
 // Teléfono español → formato internacional para WhatsApp
@@ -135,7 +138,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 // ── STATE ──
-let calYear,calMonth,selDate,jobsCache={};
+let calYear,calMonth,selDate,jobsCache={},freeRental={};
 let curView='cal',curJob=null,isEditing=false,activeTab='info',formState={},formPhotos=[];
 // Valores por defecto (oct. 2026); se sobrescriben con config/tarifas
 let tarifas={workerHour:10,partnerHour:22,businessPct:10,roundTo:5,extraKm:0.22,
@@ -432,6 +435,7 @@ function renderCal(){
       html+=`<div class="job-pill" style="background:${statusColor(j.status)}"><span class="pill-time">${tag}</span><span class="pill-name">${esc(j.clientName||'Trabajo')}</span></div>`;
     });
     if(dayJobs.length>2)html+=`<div class="pill-more">+${dayJobs.length-2} más</div>`;
+    if(freeRental[ds]&&dayJobs.length<2)html+=`<div class="job-pill free-pill" title="Vehículo alquilado y libre"><span class="pill-name">🚚 libre</span></div>`;
     cell.innerHTML=html;
     cell.onclick=()=>openDay(ds);
     grid.appendChild(cell);
@@ -444,7 +448,7 @@ function subscribeJobs(){
   // Se pide desde 30 días antes para incluir trabajos de varios días que empiezan el mes anterior
   const q=query(collection(db,'trabajos'),where('date','>=',addDays(start,-30)),where('date','<=',end));
   jobsUnsub=onSnapshot(q,snap=>{
-    jobsCache={};
+    jobsCache={};freeRental={};
     snap.forEach(d=>{
       const data={id:d.id,...d.data()};
       const n=jobDays(data);
@@ -452,6 +456,12 @@ function subscribeJobs(){
         const ds=addDays(data.date,i);
         if(ds<start||ds>end)continue;
         (jobsCache[ds]=jobsCache[ds]||[]).push({...data,_day:i+1,_ofDays:n});
+      }
+      const r=rentalDays(data);           // días alquilados de más: el vehículo está pagado y libre
+      if(data.status!=='cancelado')for(let i=n;i<r;i++){
+        const ds=addDays(data.date,i);
+        if(ds<start||ds>end)continue;
+        (freeRental[ds]=freeRental[ds]||[]).push({job:data,day:i+1,of:r});
       }
     });
     // Si el trabajo abierto ha cambiado, refrescar su detalle
@@ -476,11 +486,15 @@ function renderDayView(){
   $('day-title').textContent=`${DAYS_ES[dt.getDay()]}, ${d} ${MONTHS_ES[m-1]}`;
   const jobs=(jobsCache[selDate]||[]).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
   const cont=$('day-content');
+  const free=(freeRental[selDate]||[]).map(f=>`<div class="free-card">
+      <div class="free-title">🚚 ${esc(vehiclesLabel(f.job)||'Vehículo')} alquilado y libre</div>
+      <div class="free-text">Es el día ${f.day} de ${f.of} del alquiler del trabajo de <strong>${esc(f.job.clientName||'—')}</strong>: ya está pagado. Si metes otro trabajo hoy, el motor lo presupuesta sin alquiler, y al cerrarlo pon 0 € de alquiler.</div>
+    </div>`).join('');
   if(!jobs.length){
-    cont.innerHTML=`<div class="day-empty"><div class="day-empty-icon">📦</div><div class="day-empty-text">Sin trabajos este día</div><button class="btn btn-accent" id="btn-day-add" style="padding:12px 28px;font-size:.9rem">Añadir trabajo</button></div>`;
+    cont.innerHTML=`${free}<div class="day-empty"><div class="day-empty-icon">📦</div><div class="day-empty-text">Sin trabajos este día</div><button class="btn btn-accent" id="btn-day-add" style="padding:12px 28px;font-size:.9rem">Añadir trabajo</button></div>`;
     $('btn-day-add').onclick=()=>openNewJob(false);return;
   }
-  cont.innerHTML='';
+  cont.innerHTML=free;
   jobs.forEach(job=>{
     const card=document.createElement('div');card.className='job-card';
     const sc=statusColor(job.status);
