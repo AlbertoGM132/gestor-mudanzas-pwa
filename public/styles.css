@@ -645,3 +645,10 @@ details.close-more[open]>summary::after{content:"Ocultar"}
 .todo-nophone{font-size:var(--t-footnote);color:var(--muted)}
 .todo-hint{font-size:var(--t-caption,12px);color:var(--muted);margin-top:6px}
 .review-line{margin-top:8px;color:var(--muted)}
+
+/* ── Día con vehículo alquilado y libre ── */
+.free-pill{background:transparent!important;border:1px dashed var(--green,#15803d);color:var(--green,#15803d)}
+.free-pill .pill-name{color:var(--green,#15803d)}
+.free-card{background:var(--greenSoft,rgba(21,128,61,.1));border:1px dashed var(--green,#15803d);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px}
+.free-title{font-weight:700;color:var(--green,#15803d);margin-bottom:4px}
+.free-text{font-size:var(--t-footnote);color:var(--text);line-height:1.45}

@@ -337,3 +337,34 @@ def test_propuesta_guarda_lo_leido_y_lo_explica():
                        RutasFalsas(), lectura=lec)
     assert p["lectura"]["items"] == {"comoda": 2}
     assert any(m.startswith("Sumado de lo que escribió el cliente (+1.0 m³)") for m in p["motivos"])
+
+
+# ── Día de alquiler de más que sale casi gratis (11/11) ─────────────
+
+def test_dia_de_alquiler_de_mas_si_sale_casi_igual():
+    t = {**motor.DEFAULT_TARIFAS, "rent_furgoneta_200": 73, "rent_furgoneta_400": 88.3,
+         "rent_camion_200": 133, "rent_camion_400": 150, "extraKm": 0.22}
+    # Virginia: 2 días, ~1.300 km → 3 días por 0,30 € más (el 3.º queda libre)
+    assert motor._alquiler(t, "furgoneta", 1300, 2, 5) == (400, 3, 0.3)
+    assert motor._alquiler(t, "furgoneta", 1000, 2, 5)[:2] == (400, 2)       # +66 €: no compensa
+    assert motor._alquiler(t, "camion", 1300, 2, 5)[:2] == (400, 2)          # el camión nunca compensa
+    assert motor._alquiler(t, "furgoneta", 300, 1, 5)[:2] == (400, 1)        # sin km de más, nada
+
+
+def test_vehiculo_libre_por_dia_de_alquiler_de_mas():
+    virginia = ("v", {"date": "2026-11-09", "days": 2, "vehicles": [{"type": "crafter", "plan": 400}],
+                      "estimate": {"vehicles": [{"type": "crafter", "plan": 400, "days": 3}]}})
+    otro = ("o", {"date": "2026-11-12", "days": 1, "vehicles": [{"type": "iveco", "plan": 200}]})
+    assert motor_app.vehiculo_ese_dia([virginia], "2026-11-10") == "trabajo"
+    assert motor_app.vehiculo_ese_dia([virginia], "2026-11-11") == "alquiler"
+    assert motor_app.vehiculo_ese_dia([virginia], "2026-11-12") is False
+    assert motor_app.vehiculo_ese_dia([virginia, otro], "2026-11-12") == "trabajo"
+    assert motor_app.vehiculo_ese_dia([virginia], "2026-11-11", excepto="v") is False
+
+
+def test_alternativa_explica_el_vehiculo_libre():
+    e, r = calc(sol(muebles={"sofas": 1}, originAddress="A, Huelva", destinAddress="B, Aljaraque"),
+                [(10, 12), (12, 15), (14, 16)], True)
+    r2 = motor.calcular_presupuesto(e, [(10, 12), (12, 15), (14, 16)], T, True, otro_trabajo_ese_dia="alquiler")
+    alt = [a for a in r2["alternativas"] if a["tipo"] == "aprovechando_salida"][0]
+    assert "vehículo alquilado libre" in alt["texto"]
