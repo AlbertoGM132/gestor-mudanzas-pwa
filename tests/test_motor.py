@@ -337,3 +337,14 @@ def test_propuesta_guarda_lo_leido_y_lo_explica():
                        RutasFalsas(), lectura=lec)
     assert p["lectura"]["items"] == {"comoda": 2}
     assert any(m.startswith("Sumado de lo que escribió el cliente (+1.0 m³)") for m in p["motivos"])
+
+
+def test_dormir_fuera_suma_un_dia_de_alquiler_para_volver():
+    """11/11 (Virginia, Portil → Madrid): 2 días de trabajo con noche fuera = 3 días de alquiler."""
+    e, r = calc(sol(muebles={"sofas": 2}, originAddress="A, Huelva", destinAddress="B, Madrid"),
+                [(10, 12), (630, 380), (640, 390)], False)
+    assert r["noches"] >= 1 and r["dias_alquiler"] == r["dias"] + 1
+    assert all(v["days"] == r["dias_alquiler"] for v in r["estimate"]["vehicles"])
+    e2, r2 = calc(sol(muebles={"sofas": 2}, originAddress="A, Huelva", destinAddress="B, Lepe"),
+                  [(10, 12), (40, 35), (45, 40)], True)
+    assert r2["noches"] == 0 and r2["dias_alquiler"] == r2["dias"]

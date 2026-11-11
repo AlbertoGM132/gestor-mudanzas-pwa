@@ -393,11 +393,13 @@ def calcular_presupuesto(e, legs, tarifas=None, provincia=False, otro_trabajo_es
     socios = min(2, p)
     noche_eur = noches * (c["hotel_habitacion"] * math.ceil(p / c["personas_habitacion"]) + c["comida_persona"] * p)
     material = cajas * c["material_por_caja"]
-    est, res = _coste(t, vehs, km, dias, horas, p, socios, material + noche_eur)
+    # Si se duerme fuera, el vehículo se devuelve un día después: hace falta un día más de alquiler para volver
+    dias_alquiler = dias + (1 if noches else 0)
+    est, res = _coste(t, vehs, km, dias_alquiler, horas, p, socios, material + noche_eur)
 
     alternativas = []
     if socios == 2:
-        _, r1 = _coste(t, vehs, km, dias, horas, p, 1, material + noche_eur)
+        _, r1 = _coste(t, vehs, km, dias_alquiler, horas, p, 1, material + noche_eur)
         alternativas.append({"tipo": "un_socio", "texto": "Con un solo socio (un trabajador en su lugar)",
                              "price": r1["price"]})
     if not _forzar_furgoneta and vehs == [("iveco", 1)] and m3 <= c["capacidad"]["crafter"] and e["tipo"] == "porte":
@@ -418,6 +420,7 @@ def calcular_presupuesto(e, legs, tarifas=None, provincia=False, otro_trabajo_es
                              "texto": "Juntándolo con otro trabajo ese día" + (" (ese día ya hay uno)" if otro_trabajo_ese_dia else "")})
 
     return {"m3": m3, "vehiculos": vehs, "personas": p, "socios": socios, "dias": dias, "noches": noches,
+            "dias_alquiler": dias_alquiler,
             "horas": est["hours"], "horas_trabajo": round(h_trab, 2), "horas_conduccion": round(h_cond, 2),
             "km": round(km), "cajas": cajas, "minutos": {k: round(v) for k, v in mins.items()},
             "noche_eur": round(noche_eur, 2), "material_eur": round(material, 2), "casa_grande": casa_grande,
@@ -501,7 +504,8 @@ def texto_supuestos(r, provincia):
     if r["casa_grande"]:
         lineas.append("Casa grande con embalaje: día 1 embalar y desmontar, día 2 llevar y montar")
     if r["noches"]:
-        lineas.append(f"Noche fuera: {r['noche_eur']:.0f} € (hotel y comida)")
+        lineas.append(f"Noche fuera: {r['noche_eur']:.0f} € (hotel y comida) y {r['dias_alquiler']} días de alquiler"
+                      " (uno más para volver)")
     if r["cajas"]:
         lineas.append(f"Embalaje: {r['cajas']} cajas · material {r['material_eur']:.0f} €")
     return lineas
@@ -559,7 +563,7 @@ def proponer_entrada(e, legs, coords, avisos=None, tarifas=None, otro_trabajo_es
                      "notes": "\n".join(texto_supuestos(r, provincia)),
                      "alternativas": r["alternativas"],
                      "detalle": {k: r[k] for k in ("m3", "personas", "socios", "dias", "horas", "horas_trabajo",
-                                                    "horas_conduccion", "km", "cajas", "minutos", "noche_eur")},
+                                                    "horas_conduccion", "km", "cajas", "minutos", "noche_eur", "dias_alquiler")},
                      "vehiculo": _veh_txt(r["vehiculos"])})
     elif r:
         prop["referencia"] = {"price": r["price"], "notes": "\n".join(texto_supuestos(r, provincia)),
