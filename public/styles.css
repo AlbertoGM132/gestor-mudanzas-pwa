@@ -628,3 +628,20 @@ details.close-more>summary{cursor:pointer;list-style:none;min-height:var(--tap);
 details.close-more>summary::-webkit-details-marker{display:none}
 details.close-more>summary::after{content:"Mostrar";margin-left:auto;color:var(--accent);text-transform:none;letter-spacing:0;font-weight:600}
 details.close-more[open]>summary::after{content:"Ocultar"}
+
+/* ── «Para escribir hoy» ── */
+.todo-card{background:var(--surface);border:1px solid var(--cardBorder);box-shadow:var(--sh-1);border-radius:var(--radius);padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.todo-empty{flex-direction:row;align-items:center;gap:8px;color:var(--muted);font-size:var(--t-footnote)}
+.todo-title{font-weight:700;font-size:var(--t-headline);display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.todo-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--separator,var(--cardBorder))}
+.todo-row:first-of-type{border-top:none}
+.todo-main{flex:1 1 auto;min-width:0;min-height:44px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;background:none;border:none;padding:0;text-align:left;color:var(--text);font:inherit;cursor:pointer}
+.todo-name{font-weight:600;font-size:var(--t-body);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo-why{font-size:var(--t-footnote);color:var(--muted)}
+.todo-btns{display:flex;align-items:center;gap:6px;flex:none}
+.todo-wa{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:999px;background:var(--wa);color:#fff;font-weight:600;font-size:var(--t-footnote);text-decoration:none}
+.todo-done,.todo-lost{min-height:44px;min-width:44px;padding:0 10px;border-radius:999px;border:1px solid var(--cardBorder);background:var(--surface);color:var(--text);font:inherit;font-size:var(--t-footnote);cursor:pointer}
+.todo-lost{color:var(--red,#c0392b)}
+.todo-nophone{font-size:var(--t-footnote);color:var(--muted)}
+.todo-hint{font-size:var(--t-caption,12px);color:var(--muted);margin-top:6px}
+.review-line{margin-top:8px;color:var(--muted)}

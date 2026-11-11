@@ -253,13 +253,97 @@ function subscribePipeline(){
   });
 }
 function stageSince(j){const st=jobStage(j);return daysAgo(j[STAGE_AT[st]]||j.updatedAt||j.createdAt)}
-// Avisos de seguimiento: presupuesto sin respuesta >3 días, aceptado sin fecha >7 días
-function needsFollowUp(j){const st=jobStage(j),d=stageSince(j)??0;return (st==='solicitud'&&d>=2)||(st==='presupuestado'&&d>=3)||(st==='aceptado'&&d>=7)}
+// Días desde el último toque: el cambio de etapa o el último seguimiento, lo que sea más reciente
+function tsMs(ts){return ts?(ts.seconds?ts.seconds*1000:new Date(ts).getTime()):0}
+function sinceTouch(j){const st=jobStage(j);const last=Math.max(tsMs(j[STAGE_AT[st]]||j.updatedAt||j.createdAt),tsMs(j.followUpAt));return last?Math.floor((Date.now()-last)/86400000):null}
+// Avisos de seguimiento: presupuesto sin respuesta 3 días, aceptado sin fecha 7 días (contando desde el último mensaje)
+const FOLLOW_DAYS={presupuestado:3,aceptado:7};
+function needsFollowUp(j){const st=jobStage(j);if(st==='solicitud')return (stageSince(j)??0)>=2;
+  return FOLLOW_DAYS[st]!=null&&(sinceTouch(j)??0)>=FOLLOW_DAYS[st]}
 function updatePipeBadge(){
   const b=$('pipe-badge');if(!b)return;
-  const n=pipeline.filter(j=>jobStage(j)==='solicitud'||needsFollowUp(j)).length;   // por presupuestar + seguimientos
+  const n=pipeline.filter(j=>jobStage(j)==='solicitud'||needsFollowUp(j)).length+reviewTodo().length;   // por presupuestar + seguimientos + reseñas
   b.textContent=n||'';b.style.display=n?'inline-flex':'none';
 }
+// ── «Para escribir hoy»: seguimientos de presupuestos, fechas por cerrar y reseñas por pedir ──
+let recentDone=[],recentUnsub;
+function subscribeRecentDone(){          // trabajos de las últimas 3 semanas (para pedir la reseña al terminar)
+  if(recentUnsub)recentUnsub();
+  const q=query(collection(db,'trabajos'),where('date','>=',addDays(todayStr(),-21)));
+  recentUnsub=onSnapshot(q,snap=>{
+    recentDone=[];snap.forEach(d=>{const j={id:d.id,...d.data()};if(j.status==='completado')recentDone.push(j);});
+    updatePipeBadge();
+    if(curView==='solicitudes'||$('view-solicitudes').classList.contains('side'))renderSolicitudes();
+  });
+}
+function jobLastDay(j){return j.date?addDays(j.date,jobDays(j)-1):''}
+function reviewTodo(){
+  const hoy=todayStr();
+  return recentDone.filter(j=>!j.reviewAskedAt&&!j.reviewDone&&jobLastDay(j)&&jobLastDay(j)<=hoy)
+    .sort((a,b)=>jobLastDay(a).localeCompare(jobLastDay(b)));
+}
+function tplText(label,j){const t=WA_TEMPLATES.find(x=>x.label===label);return t?t.text(j):''}
+function writeTodo(){
+  const items=[];
+  pipeline.filter(j=>needsFollowUp(j)&&jobStage(j)!=='solicitud').forEach(j=>{
+    const st=jobStage(j),d=sinceTouch(j),n=Number(j.followUps||0);
+    const why=st==='presupuestado'
+      ?`Presupuesto${j.price?` de ${numEs(Number(j.price))} €`:''} sin respuesta${n?` · ${n} recordatorio${n>1?'s':''} ya`:''}`
+      :`Aceptó y falta la fecha${n?` · ${n} recordatorio${n>1?'s':''} ya`:''}`;
+    items.push({j,kind:st,why,d,text:tplText(st==='presupuestado'?'🔁 ¿Viste el presupuesto?':'📅 Pedir fecha',j),
+      lost:st==='presupuestado'&&n>=2});
+  });
+  reviewTodo().forEach(j=>{
+    const d=daysAgo(new Date(jobLastDay(j)+'T12:00:00'));
+    items.push({j,kind:'resena',why:'Pedir reseña en Google',d,text:tplText('⭐ Pedir reseña',j)});
+  });
+  return items.sort((a,b)=>(b.d??0)-(a.d??0));
+}
+function writeTodoHTML(){
+  const items=writeTodo();
+  if(!items.length)return `<div class="todo-card todo-empty">💬 <span>Nada que escribir hoy: todos los clientes están al día.</span></div>`;
+  return `<div class="todo-card">
+    <div class="todo-title">💬 Para escribir hoy <span class="pipe-count">${items.length}</span></div>
+    ${items.map(it=>{const link=waLink(it.j.phone,it.text);const k=esc(it.j.id)+'|'+it.kind;
+      return `<div class="todo-row">
+        <button class="todo-main" data-todo-open="${esc(it.j.id)}" aria-label="Abrir la ficha de ${esc(it.j.clientName||'cliente')}">
+          <span class="todo-name">${it.kind==='resena'?'⭐':it.kind==='aceptado'?'🤝':'📨'} ${esc(it.j.clientName||'Sin nombre')}</span>
+          <span class="todo-why">${esc(it.why)}${it.d!=null?` · hace ${it.d} día${it.d===1?'':'s'}`:''}</span>
+        </button>
+        <div class="todo-btns">
+          ${link?`<a class="todo-wa" data-todo-wa="${k}" href="${esc(link)}" target="_blank" rel="noopener">WhatsApp</a>`:`<span class="todo-nophone">Sin teléfono</span>`}
+          <button class="todo-done" data-todo-done="${k}" aria-label="Marcar como hecho" title="Ya está (lo he llamado o escrito por otro lado)">✓</button>
+          ${it.lost?`<button class="todo-lost" data-todo-lost="${esc(it.j.id)}" title="Dos recordatorios sin respuesta">Perdido</button>`:''}
+        </div>
+      </div>`;}).join('')}
+    <div class="todo-hint">Al pulsar WhatsApp se apunta el recordatorio y el cliente vuelve a salir aquí si sigue sin contestar (presupuesto: 3 días · fecha: 7 días).</div>
+  </div>`;
+}
+async function markWritten(id,kind){
+  const ref=doc(db,'trabajos',id),by=auth.currentUser.email;
+  if(kind==='resena'){
+    await setDoc(ref,{reviewAskedAt:serverTimestamp(),updatedBy:by,updatedAt:serverTimestamp()},{merge:true});
+    recentDone=recentDone.map(j=>j.id===id?{...j,reviewAskedAt:new Date().toISOString()}:j);
+  }else{
+    const j=pipeline.find(x=>x.id===id),n=Number((j&&j.followUps)||0)+1;
+    await setDoc(ref,{followUpAt:serverTimestamp(),followUps:n,updatedBy:by,updatedAt:serverTimestamp()},{merge:true});
+    pipeline=pipeline.map(x=>x.id===id?{...x,followUpAt:new Date().toISOString(),followUps:n}:x);
+  }
+  updatePipeBadge();renderSolicitudes();
+}
+function bindWriteTodo(cont){
+  cont.querySelectorAll('[data-todo-wa]').forEach(a=>a.addEventListener('click',()=>{
+    const [id,kind]=a.dataset.todoWa.split('|');setTimeout(()=>markWritten(id,kind).catch(()=>toast('No se pudo apuntar el recordatorio','err')),300);}));
+  cont.querySelectorAll('[data-todo-done]').forEach(b=>b.onclick=async()=>{
+    const [id,kind]=b.dataset.todoDone.split('|');
+    try{await markWritten(id,kind);toast('✓ Apuntado','ok');}catch(e){toast('No se pudo guardar','err');}});
+  cont.querySelectorAll('[data-todo-lost]').forEach(b=>b.onclick=async()=>{
+    const j=pipeline.find(x=>x.id===b.dataset.todoLost);if(!j)return;
+    try{await setStage(j,'perdido');toast('Marcado como perdido','ok');}catch(e){toast('No se pudo guardar','err');}});
+  cont.querySelectorAll('[data-todo-open]').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.todoOpen,j=pipeline.find(x=>x.id===id)||recentDone.find(x=>x.id===id);if(j)openJobDetail(j);});
+}
+
 // Formulario público para clientes (public/presupuesto.html)
 const FORM_URL='https://presupuesto.mudanzasdelsur.es';   // dominio propio (Hostinger → Firebase); la portada lleva al formulario
 const FORM_MSG='Hola!👋 para poder darte presupuesto necesitaría que rellenases este formulario, son solo 2 minutos y es muy sencillo. Hay que adjuntar fotos pero si lo prefieres me las puedes enviar por aquí 😁';
@@ -284,6 +368,7 @@ function renderSolicitudes(){
     </div>`;
   };
   cont.innerHTML=`
+    ${writeTodoHTML()}
     <div class="form-link-card">
       <div class="form-link-title">🌐 Formulario «Pide tu presupuesto»</div>
       <div class="form-link-url">${esc(FORM_URL)}</div>
@@ -308,6 +393,7 @@ function renderSolicitudes(){
     window.open(`https://wa.me/?text=${encodeURIComponent(FORM_MSG+'\n\n'+FORM_URL)}`,'_blank');
   };
   cont.querySelectorAll('[data-pid]').forEach(el=>el.onclick=()=>{const j=pipeline.find(x=>x.id===el.dataset.pid);if(j)openJobDetail(j);});
+  bindWriteTodo(cont);
 }
 async function setStage(job,stage,extra={}){
   const data={stage,...extra,updatedBy:auth.currentUser.email,updatedAt:serverTimestamp()};
@@ -670,7 +756,11 @@ function renderDetailView(){
   const org=jobOrigin(job);
   const hasPhone=!!waPhone(job.phone);
   const waBtns=hasPhone?WA_TEMPLATES.filter(t=>!t.when||t.when(job)).map(t=>
-    `<a class="wa-btn" href="${esc(waLink(job.phone,t.text(job)))}" target="_blank" rel="noopener">${t.label}</a>`).join(''):'';
+    `<a class="wa-btn" href="${esc(waLink(job.phone,t.text(job)))}" target="_blank" rel="noopener"${WA_KIND[t.label]?` data-wa-kind="${WA_KIND[t.label]}"`:''}>${t.label}</a>`).join(''):'';
+  const revAsked=job.reviewAskedAt?daysAgo(job.reviewAskedAt):null;
+  const reviewLine=job.status!=='completado'?'':job.reviewDone
+    ?`<div class="notes-text review-line">⭐ Ya nos dejó reseña. <button class="link-btn" id="rev-undo">deshacer</button></div>`
+    :`<div class="notes-text review-line">⭐ Reseña: ${revAsked!=null?`pedida ${revAsked===0?'hoy':`hace ${revAsked} día${revAsked===1?'':'s'}`}`:'sin pedir'} · <button class="link-btn" id="rev-done">ya la ha dejado</button></div>`;
 
   const st=jobStage(job);
   const pipeSection=job.date?'':`
@@ -713,6 +803,7 @@ function renderDetailView(){
       <div class="detail-section-title">💬 WhatsApp</div>
       ${hasPhone?`<div class="wa-row">${waBtns}</div>`
         :`<div class="notes-text" style="color:var(--muted)">Añade el teléfono del cliente para escribirle por WhatsApp desde aquí.</div>`}
+      ${reviewLine}
     </div>
     ${job.date||jobExpenses(job).length?`<div class="detail-section" id="exp-section">${expSectionInner(job)}</div>`:''}
     <div class="detail-section">
@@ -763,6 +854,17 @@ function renderDetailView(){
     catch(e){toast('Error: '+e.message,'err');}
   });
   if($('org-change'))$('org-change').onclick=()=>{originEdit=true;renderDetailView();};
+  cont.querySelectorAll('[data-wa-kind]').forEach(a=>a.addEventListener('click',()=>{
+    const kind=a.dataset.waKind==='resena'?'resena':jobStage(curJob);
+    setTimeout(()=>markWritten(curJob.id,kind).then(()=>{
+      curJob=kind==='resena'?{...curJob,reviewAskedAt:new Date().toISOString()}
+        :{...curJob,followUpAt:new Date().toISOString(),followUps:Number(curJob.followUps||0)+1};
+      if(curView==='detail')renderDetailView();}).catch(()=>{}),300);}));
+  const setReview=async v=>{try{await setDoc(doc(db,'trabajos',curJob.id),{reviewDone:v,updatedBy:auth.currentUser.email,updatedAt:serverTimestamp()},{merge:true});
+    curJob={...curJob,reviewDone:v};recentDone=recentDone.map(j=>j.id===curJob.id?{...j,reviewDone:v}:j);updatePipeBadge();renderDetailView();
+    if(v)toast('⭐ Apuntado: ya tiene reseña','ok');}catch(e){toast('No se pudo guardar','err');}};
+  if($('rev-done'))$('rev-done').onclick=()=>setReview(true);
+  if($('rev-undo'))$('rev-undo').onclick=()=>setReview(false);
   cont.querySelectorAll('[data-stage]').forEach(b=>b.onclick=async()=>{
     try{await setStage(curJob,b.dataset.stage);toast(`✅ ${STAGE_LABEL[b.dataset.stage]}`,'ok');renderDetailView();}
     catch(e){toast('Error: '+e.message,'err');}
@@ -1058,6 +1160,8 @@ function quoteMessage(j){
 
 // ── Mensajes de WhatsApp preparados ──
 function firstName(job){return (job.clientName||'').trim().split(/\s+/)[0]||''}
+// Botones de WhatsApp que, al pulsarlos, apuntan el recordatorio (salen de «Para escribir hoy»)
+const WA_KIND={'⭐ Pedir reseña':'resena','🔁 ¿Viste el presupuesto?':'seguimiento','📅 Pedir fecha':'seguimiento'};
 const WA_TEMPLATES=[
   {label:'📅 Confirmar',when:j=>j.status!=='completado'&&!!j.date,text:j=>{
     const n=jobDays(j);
@@ -2362,6 +2466,7 @@ async function boot(){
   initCal();
   subscribeFinanzas();
   subscribePipeline();
+  subscribeRecentDone();
   initNotifs();
   checkLayout();
   window.addEventListener('resize', checkLayout);
