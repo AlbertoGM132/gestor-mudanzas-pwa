@@ -7,7 +7,8 @@ import { initializeApp }    from "https://www.gstatic.com/firebasejs/11.6.0/fire
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
                             from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, doc, setDoc, deleteDoc,
-         query, where, onSnapshot, orderBy, serverTimestamp, getDoc, arrayUnion }
+         query, where, onSnapshot, orderBy, serverTimestamp, getDoc, arrayUnion,
+         getDocs, writeBatch }
                             from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getStorage, ref as sRef, uploadBytesResumable, getDownloadURL, deleteObject }
                             from "https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js";
@@ -763,6 +764,8 @@ function renderDetailView(){
         <strong style="color:${pColor};font-size:1.05rem">${job.profit>=0?'+':''}${fmt(job.profit)} €</strong>
       </div>
       ${shared?`<div class="notes-text" style="color:var(--muted);margin-top:8px">Jornada completa: cobrado ${fmt(g.revenue)} € · costes ${fmt(g.totalCost)} € · socios ${fmt(g.totalPartners)} € · negocio ${fmt(g.profit)} €</div>`:''}
+      ${closeEditNote(cd)}
+      <button class="btn btn-ghost btn-sm" id="btn-edit-close" style="margin-top:10px">✏️ Editar cierre</button>
     </div>`;
   }
 
@@ -877,6 +880,7 @@ function renderDetailView(){
   const setReview=async v=>{try{await setDoc(doc(db,'trabajos',curJob.id),{reviewDone:v,updatedBy:auth.currentUser.email,updatedAt:serverTimestamp()},{merge:true});
     curJob={...curJob,reviewDone:v};recentDone=recentDone.map(j=>j.id===curJob.id?{...j,reviewDone:v}:j);updatePipeBadge();renderDetailView();
     if(v)toast('⭐ Apuntado: ya tiene reseña','ok');}catch(e){toast('No se pudo guardar','err');}};
+  if($('btn-edit-close'))$('btn-edit-close').onclick=()=>openEditClose(curJob);
   if($('rev-done'))$('rev-done').onclick=()=>setReview(true);
   if($('rev-undo'))$('rev-undo').onclick=()=>setReview(false);
   cont.querySelectorAll('[data-stage]').forEach(b=>b.onclick=async()=>{
@@ -1331,7 +1335,91 @@ function openCloseModal(ds,onlyId){
   $('close-overlay').classList.add('open');
   document.body.style.overflow='hidden';
 }
-function closeSelectedJobs(){return closeData.candidates.filter(j=>closeData.selected.has(j.id))}
+function closeSelectedJobs(){
+  const pr=closeData.prices;
+  return closeData.candidates.filter(j=>closeData.selected.has(j.id)).map(j=>pr&&pr[j.id]!=null?{...j,price:pr[j.id]}:j);
+}
+
+// ── EDITAR UN CIERRE YA HECHO ──
+// Se abre el mismo formulario con lo que se guardó; al guardar se recalcula el beneficio de
+// todos los trabajos del cierre y se sustituyen sus movimientos en Finanzas (todo de una vez).
+const blankIfZero=v=>v==null||v===''||!Number(v)?'':String(v);
+const blankMap=o=>Object.fromEntries(Object.entries(o||{}).map(([k,v])=>[k,blankIfZero(v)]));
+// Cierres guardados antes de esta versión: no tienen lo que se escribió, se reconstruye de los totales
+function closeInputsFromGroup(g){
+  if(g.inp)return g.inp;
+  const r2=x=>Math.round(x*100)/100,tk=g.tickets||{},n=k=>Number(tk[k]||0);
+  const fuelWasAuto=g.fuel==null||Number(g.fuel)===Number(g.fuelAuto)||(n('gasoil')>0&&Number(g.fuel)===r2(n('gasoil')));
+  const extras=r2(Number(g.extras||0)-n('comida')-n('peaje')-n('alojamiento')-n('otros'));
+  return {vehicles:g.vehicles||[],hours:g.hours||{},bonus:g.bonus||{},matQty:g.matQty||{},
+    fuel:fuelWasAuto?'':g.fuel,extras:extras>0?extras:'',partnerPay:g.partnerPay||{},partnerHours:g.partnerHours||{}};
+}
+function closeEditNote(cd){
+  const e=(cd.edits||[]).slice(-1)[0];if(!e)return '';
+  const d=new Date(e.at),who=String(e.by||'').split('@')[0];
+  return `<div class="notes-text" style="color:var(--muted);margin-top:8px">✏️ Cierre corregido el ${d.toLocaleDateString('es-ES',{day:'numeric',month:'short'})}${who?` por ${esc(who)}`:''}${cd.edits.length>1?` (${cd.edits.length} veces)`:''}.</div>`;
+}
+// Movimientos de Finanzas de un cierre: por groupId; en cierres antiguos, por trabajo o por fecha y cliente
+async function closeFinIds(groupId,jobs,closeDate){
+  const ids=new Set();
+  if(groupId){
+    const s=await getDocs(query(collection(db,'finanzas'),where('groupId','==',groupId)));
+    s.forEach(d=>ids.add(d.id));
+    if(ids.size)return [...ids];
+  }
+  for(const j of jobs){
+    const s=await getDocs(query(collection(db,'finanzas'),where('jobId','==',j.id)));
+    s.forEach(d=>ids.add(d.id));
+  }
+  if(closeDate){
+    const names=jobs.map(j=>(j.clientName||'Sin nombre').trim()).filter(Boolean);
+    const s=await getDocs(query(collection(db,'finanzas'),where('date','==',closeDate)));
+    s.forEach(d=>{const desc=String(d.data().description||'');
+      if(/^(Cobro|Costes|Pago socio)/.test(desc)&&names.some(n=>desc.includes(n)))ids.add(d.id);});
+  }
+  return [...ids];
+}
+async function openEditClose(job){
+  if(!job)return;
+  const cd=job.closingData||{},g=cd.group||cd;
+  const ids=cd.jobIds&&cd.jobIds.length?cd.jobIds:[job.id];
+  let jobs=[];
+  try{
+    for(const id of ids){const sn=await getDoc(doc(db,'trabajos',id));if(sn.exists())jobs.push({id:sn.id,...sn.data()});}
+  }catch(e){toast('Error: '+e.message,'err');return;}
+  if(!jobs.some(j=>j.id===job.id))jobs.unshift({...job});
+  // Si la ficha abierta tiene gastos recién apuntados, se usan esos
+  jobs=jobs.map(j=>curJob&&j.id===curJob.id&&jobExpenses(curJob).length>=jobExpenses(j).length?{...j,expenses:jobExpenses(curJob)}:j);
+  const inp=closeInputsFromGroup(g);
+  const crews=[...new Set(jobs.flatMap(jobCrew))];
+  const people=[...new Set([...WORKERS,...crews,...Object.keys(inp.hours||{}),...Object.keys(inp.bonus||{})])].filter(p=>!PARTNERS.includes(p));
+  const hours=blankMap(inp.hours);
+  closeData={ds:cd.closeDate||job.date,candidates:jobs,selected:new Set(jobs.map(j=>j.id)),
+    vehicles:(inp.vehicles||[]).map(v=>({type:v.type,plan:v.plan,days:v.days,km:blankIfZero(v.km)})),
+    crew:crews,people,hours:Object.fromEntries(people.map(p=>[p,hours[p]||''])),bonus:blankMap(inp.bonus),tickets:{},
+    matQty:blankMap(inp.matQty),fuel:blankIfZero(inp.fuel),extras:blankIfZero(inp.extras),
+    partnerPay:Object.fromEntries(PARTNERS.map(p=>[p,blankIfZero((inp.partnerPay||{})[p])])),
+    partnerHours:Object.fromEntries(PARTNERS.map(p=>[p,blankIfZero((inp.partnerHours||{})[p])])),
+    prices:Object.fromEntries(jobs.map(j=>[j.id,j.price==null?'':String(j.price)])),
+    edit:{groupId:cd.groupId||null,finIds:null,edits:cd.edits||[],
+      before:{revenue:g.revenue??null,totalCost:g.totalCost??null,profit:g.profit??job.profit??null}}};
+  if(expDraft&&expDraft.ctx==='close')expDraft=null;
+  renderCloseModal();
+  $('close-overlay').classList.add('open');
+  document.body.style.overflow='hidden';
+  try{closeData.edit.finIds=await closeFinIds(closeData.edit.groupId,jobs,closeData.ds);}
+  catch(e){closeData.edit.finIds=[];closeData.edit.finErr=e.message;}
+  updateCloseEditNote();
+}
+function updateCloseEditNote(){
+  const el=$('close-edit-note'),e=closeData.edit;if(!el||!e)return;
+  const n=e.finIds==null?null:e.finIds.length;
+  el.textContent=n==null?'Buscando sus movimientos en Finanzas…'
+    :e.finErr?`No he podido leer Finanzas (${e.finErr}). Inténtalo de nuevo con conexión.`
+    :n?`Al guardar se recalcula el beneficio y se sustituyen sus ${n} movimiento${n===1?'':'s'} en Finanzas.`
+    :'No he encontrado sus movimientos en Finanzas: al guardar se crean nuevos. Revisa que no quede ninguno repetido.';
+  $('close-modal-save').disabled=n==null||!!e.finErr||!closeSelectedJobs().length;
+}
 function closeExpInner(){
   const sel=closeSelectedJobs();
   return `<div class="form-section-title">🧾 Tickets y gastos apuntados</div>
@@ -1353,9 +1441,19 @@ function renderCloseModal(){
   const body=$('close-modal-body');
   const consumables=MATERIALS.filter(m=>!REUSABLE.includes(m));
   const title=$('close-modal-title')||document.querySelector('#close-box .modal-title');   // tolera un index.html antiguo en caché
-  if(title)title.textContent=c.candidates.length>1?`✅ Cerrar el ${fmtDateEs(c.ds)}`:'✅ Cerrar trabajo';
+  if(title)title.textContent=c.edit?'✏️ Editar cierre':c.candidates.length>1?`✅ Cerrar el ${fmtDateEs(c.ds)}`:'✅ Cerrar trabajo';
+  $('close-modal-save').textContent=c.edit?'Guardar cambios':'Confirmar y cerrar';
   body.innerHTML=`
-    ${c.candidates.length>1?`<div class="form-section">
+    ${c.edit?`<div class="form-section">
+      <div class="form-section-title">💶 Lo cobrado${c.candidates.length>1?` · cierre del ${fmtDateEs(c.ds)}`:''}</div>
+      <div class="notes-text" id="close-edit-note" style="color:var(--muted);margin-bottom:6px"></div>
+      ${c.candidates.map(j=>`
+        <label class="close-job-row">
+          <span class="close-job-name">${esc(j.clientName||'Sin nombre')}${jobDays(j)>1?` <small>(${jobDays(j)} días)</small>`:''}</span>
+          <input class="worker-input" type="number" min="0" step="1" style="width:96px" aria-label="Precio cobrado a ${esc(j.clientName||'Sin nombre')}" data-price="${esc(j.id)}" value="${esc(String(c.prices[j.id]??''))}" />
+          <span style="font-size:.75rem;color:var(--muted)">€</span>
+        </label>`).join('')}
+    </div>`:c.candidates.length>1?`<div class="form-section">
       <div class="form-section-title">📋 Trabajos de este cierre</div>
       <div class="notes-text" style="color:var(--muted);margin-bottom:4px">Los gastos del día se apuntan una sola vez y se reparten según el precio de cada trabajo.</div>
       ${c.candidates.map(j=>`
@@ -1432,6 +1530,7 @@ function renderCloseModal(){
     <div class="calc-preview" id="close-calc"></div>`;
 
   body.querySelectorAll('[data-sel]').forEach(cb=>cb.onchange=()=>{cb.checked?c.selected.add(cb.dataset.sel):c.selected.delete(cb.dataset.sel);rerenderCloseExp();});
+  body.querySelectorAll('[data-price]').forEach(inp=>inp.oninput=()=>{c.prices[inp.dataset.price]=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-vkm]').forEach(inp=>inp.oninput=()=>{c.vehicles[+inp.dataset.vkm].km=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-vdays]').forEach(inp=>inp.oninput=()=>{c.vehicles[+inp.dataset.vdays].days=inp.value;updateCloseCalc();});
   body.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=()=>{c.vehicles.splice(+b.dataset.vdel,1);renderCloseModal();});
@@ -1488,8 +1587,10 @@ function updateCloseCalc(){
     <div class="calc-row ${pClass}"><span>🏢 Beneficio para el negocio</span><span>${r.profit>=0?'+':''}${fmt(r.profit)} €</span></div>
     ${sel.length>1?`<div class="calc-split">${r.perJob.map(p=>{const j=sel.find(x=>x.id===p.id);return `<div class="calc-row"><span>${esc(j.clientName||'')}</span><span>${p.profit>=0?'+':''}${fmt(p.profit)} €</span></div>`;}).join('')}</div>`:''}
     ${noPrice.length?`<div class="calc-row" style="color:var(--danger)"><span>⚠️ Sin precio: ${noPrice.map(j=>esc(j.clientName||'')).join(', ')}</span></div>`:''}
-    ${!sel.length?'<div class="calc-row" style="color:var(--danger)"><span>Marca al menos un trabajo</span></div>':''}`;
+    ${!sel.length?'<div class="calc-row" style="color:var(--danger)"><span>Marca al menos un trabajo</span></div>':''}
+    ${closeData.edit&&closeData.edit.before.profit!=null?`<div class="calc-row" style="color:var(--muted)"><span>Antes de corregir</span><span>${closeData.edit.before.profit>=0?'+':''}${fmt(closeData.edit.before.profit)} €</span></div>`:''}`;
   $('close-modal-save').disabled=!sel.length;
+  if(closeData.edit)updateCloseEditNote();
 }
 
 function closeCloseModal(){
@@ -1501,16 +1602,69 @@ $('close-modal-x').onclick=closeCloseModal;
 $('close-modal-cancel').onclick=closeCloseModal;
 $('close-overlay').onclick=e=>{if(e.target===$('close-overlay'))closeCloseModal();};
 
+// Movimientos de Finanzas de un cierre: un ingreso por trabajo; los costes y el pago a socios, una vez
+function closeFinEntries(jobs,r,closeDate,groupId,who){
+  const names=jobs.map(j=>(j.clientName||'Sin nombre').trim()).join(', ');
+  const base={date:closeDate,groupId,jobIds:jobs.map(j=>j.id),createdBy:who,createdAt:serverTimestamp()};
+  const out=[];
+  for(const j of jobs)if(Number(j.price))
+    out.push({...base,jobId:j.id,type:'income',amount:Number(j.price),description:`Cobro: ${(j.clientName||'Sin nombre').trim()}`});
+  if(r.totalCost)out.push({...base,type:'expense',amount:r.totalCost,
+    description:jobs.length>1?`Costes ${fmtDateEs(closeDate)}: ${names}`:`Costes trabajo: ${names}`});
+  for(const [name,amount] of Object.entries(r.partnerPay))
+    out.push({...base,type:'expense',amount,partner:name,description:`Pago socio ${name} · ${jobs.length>1?fmtDateEs(closeDate):names}`});
+  return out;
+}
+// Lo escrito en el formulario, para poder volver a abrirlo tal cual al editar
+function closeInputsToSave(c){
+  return {vehicles:c.vehicles.map(v=>({type:v.type,plan:v.plan,days:v.days,km:v.km})),hours:{...c.hours},bonus:{...c.bonus},
+    matQty:{...c.matQty},fuel:c.fuel,extras:c.extras,partnerPay:{...c.partnerPay},partnerHours:{...c.partnerHours}};
+}
+
+async function saveEditedClose(){
+  const c=closeData,e=c.edit,jobs=closeSelectedJobs();
+  if(e.finIds==null)return;
+  c.tickets=ticketTotals(jobs);
+  const r=computeClosing(jobs,c);
+  const {perJob,profit,...group}=r;
+  const groupId=e.groupId||`c${Date.now()}`;
+  const jobIds=jobs.map(j=>j.id);
+  const who=auth.currentUser.email;
+  const edits=[...e.edits,{at:new Date().toISOString(),by:who,before:e.before}].slice(-20);
+  const btn=$('close-modal-save');
+  btn.innerHTML='<span class="spin"></span>';btn.disabled=true;
+  try{
+    const batch=writeBatch(db);
+    const saved={};
+    for(const j of jobs){
+      const pj=perJob.find(p=>p.id===j.id);
+      const closingData={groupId,jobIds,closeDate:c.ds,share:pj.share,allocCost:pj.allocCost,allocPartners:pj.allocPartners,
+        allocMargin:pj.allocMargin,edits,group:{...group,profit,partnerHours:c.partnerHours,inp:closeInputsToSave(c)}};
+      saved[j.id]={price:j.price,profit:pj.profit,closingData};
+      // closingData entero (no merge) para que no queden horas o gastos que se han quitado
+      batch.set(doc(db,'trabajos',j.id),{price:j.price,profit:pj.profit,closingData,closingEditedBy:who,closingEditedAt:serverTimestamp()},
+        {mergeFields:['price','profit','closingData','closingEditedBy','closingEditedAt']});
+    }
+    for(const id of e.finIds)batch.delete(doc(db,'finanzas',id));
+    for(const f of closeFinEntries(jobs,r,c.ds,groupId,who))batch.set(doc(collection(db,'finanzas')),f);
+    await batch.commit();
+    toast('✏️ Cierre corregido','ok');
+    closeCloseModal();
+    if(curView==='detail'&&curJob&&saved[curJob.id]){curJob={...curJob,...saved[curJob.id]};renderDetailView();}
+  }catch(err){toast('Error: '+err.message,'err');}
+  finally{btn.textContent='Guardar cambios';btn.disabled=false;}
+}
+
 $('close-modal-save').addEventListener('click',async()=>{
   const jobs=closeSelectedJobs();
   if(!jobs.length)return;
   if(expDraft&&expDraft.ctx==='close'){toast('Guarda o cancela el gasto que estás apuntando','err');return;}
+  if(closeData.edit)return saveEditedClose();
   closeData.tickets=ticketTotals(jobs);
   const r=computeClosing(jobs,closeData);
   const {perJob,profit,...group}=r;
   const groupId=`c${Date.now()}`;
   const jobIds=jobs.map(j=>j.id);
-  const names=jobs.map(j=>(j.clientName||'Sin nombre').trim()).join(', ');
   const closeDate=closeData.ds;
   const btn=$('close-modal-save');
   btn.innerHTML='<span class="spin"></span>';btn.disabled=true;
@@ -1521,24 +1675,17 @@ $('close-modal-save').addEventListener('click',async()=>{
       await setDoc(doc(db,'trabajos',j.id),{
         status:'completado',profit:pj.profit,
         closingData:{groupId,jobIds,closeDate,share:pj.share,allocCost:pj.allocCost,
-          allocPartners:pj.allocPartners,allocMargin:pj.allocMargin,group:{...group,profit,partnerHours:closeData.partnerHours}},
+          allocPartners:pj.allocPartners,allocMargin:pj.allocMargin,group:{...group,profit,partnerHours:closeData.partnerHours,inp:closeInputsToSave(closeData)}},
         completedBy:who,completedAt:serverTimestamp()
       },{merge:true});
     }
     // Finanzas: un ingreso por trabajo; los costes y el pago a socios, una vez por cierre
-    const base={date:closeDate,groupId,jobIds,createdBy:who,createdAt:serverTimestamp()};
-    for(const j of jobs)if(Number(j.price))
-      await addDoc(collection(db,'finanzas'),{...base,jobId:j.id,type:'income',amount:Number(j.price),description:`Cobro: ${(j.clientName||'Sin nombre').trim()}`});
-    if(r.totalCost)await addDoc(collection(db,'finanzas'),{...base,type:'expense',amount:r.totalCost,
-      description:jobs.length>1?`Costes ${fmtDateEs(closeDate)}: ${names}`:`Costes trabajo: ${names}`});
-    for(const [name,amount] of Object.entries(r.partnerPay))
-      await addDoc(collection(db,'finanzas'),{...base,type:'expense',amount,partner:name,
-        description:`Pago socio ${name} · ${jobs.length>1?fmtDateEs(closeDate):names}`});
+    for(const f of closeFinEntries(jobs,r,closeDate,groupId,who))await addDoc(collection(db,'finanzas'),f);
     toast(jobs.length>1?`✅ ${jobs.length} trabajos cerrados`:'✅ Trabajo cerrado','ok');
     closeCloseModal();
     if(curView==='detail'&&curJob&&jobIds.includes(curJob.id)){
       const pj=perJob.find(p=>p.id===curJob.id);
-      curJob={...curJob,status:'completado',profit:pj.profit,closingData:{groupId,jobIds,closeDate,share:pj.share,allocCost:pj.allocCost,allocPartners:pj.allocPartners,allocMargin:pj.allocMargin,group:{...group,profit}}};
+      curJob={...curJob,status:'completado',profit:pj.profit,closingData:{groupId,jobIds,closeDate,share:pj.share,allocCost:pj.allocCost,allocPartners:pj.allocPartners,allocMargin:pj.allocMargin,group:{...group,profit,partnerHours:closeData.partnerHours,inp:closeInputsToSave(closeData)}}};
       renderDetailView();
     }
   }catch(e){toast('Error: '+e.message,'err');}
