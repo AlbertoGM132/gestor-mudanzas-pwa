@@ -82,6 +82,12 @@ const fmt = n => Number(n||0).toFixed(2);
 let toastT;
 function toast(msg,type=''){clearTimeout(toastT);const t=$('toast');t.textContent=msg;t.className='show '+type;toastT=setTimeout(()=>t.className='',3200)}
 // Colores de estado: vienen del CSS (cambian con el tema claro/oscuro)
+// Punto exacto que marcó el cliente en la calculadora web → abre Google Maps
+function mapLink(c){
+  const lat=Number(c&&c.lat),lng=Number(c&&c.lng);
+  if(!isFinite(lat)||!isFinite(lng)||(!lat&&!lng))return '';
+  return ` <a class="link-btn" href="https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}" target="_blank" rel="noopener">ver en el mapa</a>`;
+}
 function statusColor(s){return s==='completado'?'var(--st-done)':s==='en_curso'?'var(--st-curso)':'var(--st-pend)'}
 const statusTint=sc=>`color-mix(in srgb,${sc} 15%,transparent)`;
 function statusLabel(s){return s==='completado'?'Completado':s==='en_curso'?'En curso':'Pendiente'}
@@ -839,14 +845,14 @@ function renderDetailView(){
     </div>
     <div class="detail-section">
       <div class="detail-section-title">📍 Origen</div>
-      <div class="detail-row"><span>Dirección</span><strong>${esc(job.originAddress||'—')}</strong></div>
+      <div class="detail-row"><span>Dirección</span><strong>${esc(job.originAddress||'—')}${mapLink(job.originCoords)}</strong></div>
       <div class="detail-row"><span>Piso / Puerta</span><strong>${esc(job.originFloor||'—')}</strong></div>
       <div class="detail-row"><span>Ascensor</span><strong>${ELEV_LABEL(elev(job,'originElevator'))}</strong></div>
       ${accessLabel(job.originAccess)?`<div class="notes-text" style="margin-top:4px">🚚 ${esc(accessLabel(job.originAccess))}</div>`:''}
     </div>
     <div class="detail-section">
       <div class="detail-section-title">🏠 Destino</div>
-      <div class="detail-row"><span>Dirección</span><strong>${esc(job.destinAddress||'—')}</strong></div>
+      <div class="detail-row"><span>Dirección</span><strong>${esc(job.destinAddress||'—')}${mapLink(job.destinCoords)}</strong></div>
       <div class="detail-row"><span>Piso / Puerta</span><strong>${esc(job.destinFloor||'—')}</strong></div>
       <div class="detail-row"><span>Ascensor</span><strong>${ELEV_LABEL(elev(job,'destinElevator'))}</strong></div>
       ${accessLabel(job.destinAccess)?`<div class="notes-text" style="margin-top:4px">🚚 ${esc(accessLabel(job.destinAccess))}</div>`:''}

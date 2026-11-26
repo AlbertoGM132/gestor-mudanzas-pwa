@@ -99,6 +99,25 @@ def test_estimar_guarda_solicitud_y_rango():
     assert d["email"] == "lucia@example.com" and len(d["photos"]) == 1
     assert "Desmontaje y montaje" in d["services"]
 
+def test_estimar_punto_del_mapa_busca_la_direccion():
+    repo = Repo(); b = base()
+    b["origen"]["calle"], b["origen"]["poblacion"] = "Punto marcado en el mapa", ""
+    b["destino"]["calle"] = ""
+    vistos = []
+    def direccion(xy):
+        vistos.append(xy)
+        return ("Calle San Sebastián 4", "Huelva") if len(vistos) == 1 else None
+    r = w.estimar(b, "1.2.3.4", repo, {}, ruta=lambda p: [3.0, 12.0, 10.0], direccion=direccion)
+    d = repo.creados[0]
+    assert r["ok"] and vistos == [(37.257, -6.95), (37.27, -7.02)]
+    assert d["originAddress"].startswith("Calle San Sebastián 4") and "Huelva" in d["originAddress"]
+    assert "Punto en el mapa (37.27000, -7.02000)" in d["destinAddress"]   # sin respuesta: quedan las coordenadas
+
+def test_estimar_con_calle_no_busca_direccion():
+    def direccion(xy): raise AssertionError("no debería buscar")
+    r = w.estimar(base(), "1.2.3.4", Repo(), {}, ruta=lambda p: [3.0, 12.0, 10.0], direccion=direccion)
+    assert r["ok"]
+
 def test_estimar_km_aprox_si_falla_ruta():
     repo = Repo()
     def ruta(p): raise OSError("sin red")

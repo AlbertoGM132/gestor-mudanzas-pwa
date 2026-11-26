@@ -302,6 +302,41 @@ def _coord(lado):
     return (lat, lng)
 
 
+# Dirección de un punto tocado en el mapa (OpenStreetMap). La web ya la busca; esto es por si
+# llega sin ella (sin conexión, una versión antigua de la página en caché…).
+def _osm_direccion(xy, timeout=6):
+    url = ("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=es"
+           f"&lat={xy[0]:.6f}&lon={xy[1]:.6f}")
+    req = urllib.request.Request(url, headers={"User-Agent": "MudanzasDelSur/1.0 (mudanzasdelsur.es)"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        a = (json.loads(r.read().decode()) or {}).get("address") or {}
+    calle = " ".join(x for x in (a.get("road") or a.get("pedestrian") or a.get("neighbourhood"), a.get("house_number")) if x)
+    poblacion = a.get("city") or a.get("town") or a.get("village") or a.get("municipality") or ""
+    return (calle, poblacion) if (calle or poblacion) else None
+
+
+_SIN_CALLE = re.compile(r"^\s*(punto marcado en el mapa|punto en el mapa|buscando la direcci)", re.I)
+
+
+def _con_direccion(src, xy, direccion):
+    """Si el lado llega sin calle (solo el punto del mapa), la busca por coordenadas; si no la encuentra,
+    deja las coordenadas en la dirección para que se pueda localizar."""
+    src = dict(src or {})
+    if fw._txt(src.get("calle"), 160) and not _SIN_CALLE.match(str(src.get("calle"))):
+        return src
+    hallada = None
+    if direccion:
+        try:
+            hallada = direccion(xy)
+        except Exception as e:  # noqa: BLE001
+            print("direccion del punto:", repr(e))
+    if hallada:
+        src["calle"], src["poblacion"] = hallada[0] or "", hallada[1] or src.get("poblacion") or ""
+    else:
+        src["calle"] = f"Punto en el mapa ({xy[0]:.5f}, {xy[1]:.5f})"
+    return src
+
+
 # ── Calculadora → solicitud ─────────────────────────────────
 
 def _items_entrada(lista):
@@ -345,7 +380,7 @@ def _parking(m):
     return "puerta" if m < 10 else ("30" if m < 30 else ("100" if m <= 100 else "mas"))
 
 
-def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None, leer=None):
+def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None, leer=None, direccion=_osm_direccion):
     """`leer(texto, items)`: lectura con IA del comentario (lectura_ia.leer). Sin ella, el comentario no suma."""
     body = body if isinstance(body, dict) else {}
     # Bots: igual que el formulario (campo trampa con envío rápido / envío instantáneo).
@@ -361,6 +396,7 @@ def estimar(body, ip, repo, tarifas, ruta=_osrm, ahora=None, leer=None):
     o_xy, d_xy = _coord(o_in), _coord(d_in)
     if not o_xy or not d_xy:
         raise WebError(400, "Marca en el mapa las dos direcciones (origen y destino).")
+    o_in, d_in = _con_direccion(o_in, o_xy, direccion), _con_direccion(d_in, d_xy, direccion)
 
     tipo = "porte" if body.get("tipo") == "porte" else "casa"
     items = _items_entrada(body.get("items"))
